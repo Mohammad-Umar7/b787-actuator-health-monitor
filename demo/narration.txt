@@ -1,0 +1,15 @@
+A grounded aircraft costs far more than a planned repair. On this Boeing 787 fleet, nose landing gear actuators are failing more often than expected. In four months of data, six of ten failed.
+
+AcuMain tells managers which aircraft will fail in the next thirty days, before it happens.
+
+The dashboard opens with the fleet picture: how many aircraft are high, medium and low risk, and one clear alert. Six aircraft are high risk, and without action about four of them will fail within thirty days.
+
+The fleet outlook shows how fast the risk is growing: from no high-risk aircraft in January to six in April.
+
+Every aircraft is ranked by risk, with a likely range and a clear decision: schedule repair now, plan an inspection, or no action needed.
+
+Select any aircraft to see why. For B787-008, slow operation and very high leakage drive an eighty-five percent risk, and its history shows that risk climbing month by month.
+
+Behind it is a model built not to overfit. Tested on aircraft it had never seen, it caught six of six failures with one false alarm. It scores new data the moment it arrives.
+
+Fewer surprise groundings. Better planning. More aircraft ready to fly. AcuMain: predict the failure before it happens.

@@ -18,3 +18,6 @@ slides/
 # Scratch output
 risk_model/artifacts/predictions.csv
 demo/work/
+
+# The hosted copy of the demo video; the original is demo/demo.mp4
+dashboard/static/demo.mp4

@@ -1,0 +1,111 @@
+1
+00:00:01,240 --> 00:00:05,157
+A grounded aircraft costs far more than a planned repair.
+
+2
+00:00:05,197 --> 00:00:09,440
+On this Boeing 787 fleet, nose landing gear actuators
+
+3
+00:00:09,480 --> 00:00:11,961
+are failing more often than expected.
+
+4
+00:00:12,001 --> 00:00:15,083
+In four months of data, six of ten failed.
+
+5
+00:00:15,123 --> 00:00:17,323
+AcuMain tells managers which aircraft
+
+6
+00:00:17,363 --> 00:00:20,617
+will fail in the next thirty days, before it happens.
+
+7
+00:00:20,657 --> 00:00:23,147
+The dashboard opens with the fleet picture:
+
+8
+00:00:23,187 --> 00:00:26,371
+how many aircraft are high, medium and low risk,
+
+9
+00:00:26,411 --> 00:00:28,009
+and one clear alert.
+
+10
+00:00:28,049 --> 00:00:31,017
+Six aircraft are high risk, and without action
+
+11
+00:00:31,057 --> 00:00:33,902
+about four of them will fail within thirty days.
+
+12
+00:00:33,942 --> 00:00:36,991
+The fleet outlook shows how fast the risk is growing:
+
+13
+00:00:37,031 --> 00:00:40,916
+from no high-risk aircraft in January to six in April.
+
+14
+00:00:40,956 --> 00:00:43,043
+Every aircraft is ranked by risk,
+
+15
+00:00:43,083 --> 00:00:45,676
+with a likely range and a clear decision:
+
+16
+00:00:45,716 --> 00:00:48,406
+schedule repair now, plan an inspection,
+
+17
+00:00:48,446 --> 00:00:50,148
+or no action needed.
+
+18
+00:00:50,188 --> 00:00:52,541
+Select any aircraft to see why.
+
+19
+00:00:52,581 --> 00:00:57,988
+For B787-008, slow operation and very high leakage
+
+20
+00:00:58,028 --> 00:01:00,259
+drive an eighty-five percent risk,
+
+21
+00:01:00,299 --> 00:01:03,683
+and its history shows that risk climbing month by month.
+
+22
+00:01:03,723 --> 00:01:06,769
+Behind it is a model built not to overfit.
+
+23
+00:01:06,809 --> 00:01:09,033
+Tested on aircraft it had never seen,
+
+24
+00:01:09,073 --> 00:01:12,525
+it caught six of six failures with one false alarm.
+
+25
+00:01:12,565 --> 00:01:15,362
+It scores new data the moment it arrives.
+
+26
+00:01:15,402 --> 00:01:18,093
+Fewer surprise groundings. Better planning.
+
+27
+00:01:18,133 --> 00:01:20,217
+More aircraft ready to fly.
+
+28
+00:01:20,257 --> 00:01:23,122
+AcuMain: predict the failure before it happens.

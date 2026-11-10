@@ -1,0 +1,83 @@
+{
+  "voice": "af_heart",
+  "speed": 1,
+  "note": "cues = the subtitle lines, in order; joined with spaces they are the narration exactly as scripted. say = the same sentence spelled the way the voice should pronounce it (numbers, aircraft IDs and the product name: the voice engine reads \"Acumain\" as ACK-yoo-main, one word; \"AcuMain\" comes out as two words).",
+  "beats": [
+    {
+      "id": "b1",
+      "cues": [
+        "A grounded aircraft costs far more than a planned repair.",
+        "On this Boeing 787 fleet, nose landing gear actuators",
+        "are failing more often than expected.",
+        "In four months of data, six of ten failed."
+      ],
+      "say": "A grounded aircraft costs far more than a planned repair. On this Boeing seven eighty-seven fleet, nose landing gear actuators are failing more often than expected. In four months of data, six of ten failed."
+    },
+    {
+      "id": "b2",
+      "cues": [
+        "AcuMain tells managers which aircraft",
+        "will fail in the next thirty days, before it happens."
+      ],
+      "say": "Acumain tells managers which aircraft will fail in the next thirty days, before it happens."
+    },
+    {
+      "id": "b3",
+      "cues": [
+        "The dashboard opens with the fleet picture:",
+        "how many aircraft are high, medium and low risk,",
+        "and one clear alert.",
+        "Six aircraft are high risk, and without action",
+        "about four of them will fail within thirty days."
+      ],
+      "say": "The dashboard opens with the fleet picture: how many aircraft are high, medium and low risk, and one clear alert. Six aircraft are high risk, and without action about four of them will fail within thirty days."
+    },
+    {
+      "id": "b4",
+      "cues": [
+        "The fleet outlook shows how fast the risk is growing:",
+        "from no high-risk aircraft in January to six in April."
+      ],
+      "say": "The fleet outlook shows how fast the risk is growing: from no high-risk aircraft in January to six in April."
+    },
+    {
+      "id": "b5",
+      "cues": [
+        "Every aircraft is ranked by risk,",
+        "with a likely range and a clear decision:",
+        "schedule repair now, plan an inspection,",
+        "or no action needed."
+      ],
+      "say": "Every aircraft is ranked by risk, with a likely range and a clear decision: schedule repair now, plan an inspection, or no action needed."
+    },
+    {
+      "id": "b6",
+      "cues": [
+        "Select any aircraft to see why.",
+        "For B787-008, slow operation and very high leakage",
+        "drive an eighty-five percent risk,",
+        "and its history shows that risk climbing month by month."
+      ],
+      "say": "Select any aircraft to see why. For B seven eight seven, zero zero eight, slow operation and very high leakage drive an eighty-five percent risk, and its history shows that risk climbing month by month."
+    },
+    {
+      "id": "b7",
+      "cues": [
+        "Behind it is a model built not to overfit.",
+        "Tested on aircraft it had never seen,",
+        "it caught six of six failures with one false alarm.",
+        "It scores new data the moment it arrives."
+      ],
+      "say": "Behind it is a model built not to overfit. Tested on aircraft it had never seen, it caught six of six failures with one false alarm. It scores new data the moment it arrives."
+    },
+    {
+      "id": "b8",
+      "cues": [
+        "Fewer surprise groundings. Better planning.",
+        "More aircraft ready to fly.",
+        "AcuMain: predict the failure before it happens."
+      ],
+      "say": "Fewer surprise groundings. Better planning. More aircraft ready to fly. Acumain: predict the failure before it happens."
+    }
+  ]
+}

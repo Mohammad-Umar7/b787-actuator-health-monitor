@@ -1,4 +1,4 @@
-# B787 nose gear actuator: failure risk model and dashboard
+# AcuMain: B787 nose gear actuator failure risk
 
 Case 1 of the AI for Smart Maintenance Hackathon (MoIAT × GAL, 10–12 Nov 2026).
 
@@ -12,7 +12,7 @@ run_dashboard.bat --data "path\to\new file.xlsx"
 ```
 The file needs the columns `Leakage_Level`, `Operation_Time` and `Actuator_Age_Months`. Excel and CSV both work.
 
-Live copy: https://actuator-health-monitor.vercel.app
+Live copy: https://acumain.vercel.app
 
 ## What the dashboard shows
 It is written for managers: what to expect, and what to decide.
@@ -44,5 +44,5 @@ Restart the dashboard afterwards so it loads the new model.
 | `risk_model/` | The model code, its tests, and `RISK_MODEL.md`, a plain-English explanation |
 | `risk_model/artifacts/` | The trained model, validation report and scores |
 | `dashboard/` | `server.py` and the page in `static/` |
-| `deliverables/` | The filled submission deck, the script that builds it, and screenshots |
+| `deliverables/` | The filled submission deck, the technical summary PDF, the scripts that build them, and screenshots |
 | `demo/` | The narrated demo video and its subtitles |

@@ -16,11 +16,11 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "data" / "Group Number - University Name.pptx"
 SCREENSHOT = ROOT / "deliverables" / "screenshots" / "dashboard-slide.png"
-LIVE = "actuator-health-monitor.vercel.app"
+LIVE = "acumain.vercel.app"
 
 CONTENT = {
-    "project": "GearSense",
-    "project_line": "GearSense: Actuator Health Monitor",
+    "project": "AcuMain",
+    "project_line": "AcuMain: Actuator Health Monitor",
     "group_name": "AAU ENGINEERS TEAM",
     "university": "AL AIN UNIVERSITY",
     "members": "Mohammad Umar   ·   Farooq Shafeek   ·   Abdulahad   ·   Sadiq   ·   Zubair",
@@ -30,7 +30,7 @@ CONTENT = {
            "In our data 6 of 10 failed within four months, and every one showed warning signs "
            "1 to 2 months earlier.",
     "solution": [
-        "GearSense shows managers which B787 nose gear actuators are likely to fail in the next 30 days, "
+        "AcuMain shows managers which B787 nose gear actuators are likely to fail in the next 30 days, "
         "why, and what to decide.",
         "•  For decision-makers: fleet outlook, expected failures, ranked priorities.",
         "•  Honest: every risk has a range; tested on aircraft the model never saw.",

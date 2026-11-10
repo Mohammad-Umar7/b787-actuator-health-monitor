@@ -1,0 +1,25 @@
+# Start:  docker compose up --build        Stop:  docker compose down
+# Dashboard:  http://localhost:8787
+#
+# The values below are read from a file named ".env" next to this file, if there is one (copy .env.example).
+# With no .env, or an empty ANTHROPIC_API_KEY, the app runs with its built-in planner and needs no key.
+services:
+  acumain:
+    build: .
+    image: acumain:2.0
+    container_name: acumain
+    ports:
+      - "${ACUMAIN_PUBLISHED_PORT:-8787}:8787"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ACUMAIN_AGENT_MODE: ${ACUMAIN_AGENT_MODE:-auto}
+      ACUMAIN_MODEL: ${ACUMAIN_MODEL:-claude-sonnet-5-5}
+      ACUMAIN_EFFORT: ${ACUMAIN_EFFORT:-medium}
+      ACUMAIN_DAILY_USD_LIMIT: ${ACUMAIN_DAILY_USD_LIMIT:-10}
+      ACUMAIN_RUN_USD_LIMIT: ${ACUMAIN_RUN_USD_LIMIT:-0.50}
+    volumes:
+      - acumain-data:/data
+    restart: unless-stopped
+
+volumes:
+  acumain-data:

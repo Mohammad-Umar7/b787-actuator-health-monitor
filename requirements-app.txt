@@ -1,0 +1,12 @@
+# What the app needs to run (this is what the Docker image installs).
+# The versions are pinned to the ones the model was trained and saved with, so the saved model loads exactly.
+anthropic==2.8.0
+fastapi==0.162.4
+joblib==1.6.0
+lightgbm==4.7.0
+numpy==2.4.6
+pandas==3.1.1
+python-multipart==0.0.33
+scikit-learn==1.9.1
+scipy==1.17.1
+uvicorn==0.54.0

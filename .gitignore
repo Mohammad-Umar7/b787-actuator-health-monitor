@@ -15,6 +15,11 @@ briefing-transcript-*.md
 slides.md
 slides/
 
+# Secrets and what the app writes while it runs. The API key lives in .env and never goes to GitHub.
+.env
+runtime/
+.pytest_cache/
+
 # Scratch output
 risk_model/artifacts/predictions.csv
 demo/work/

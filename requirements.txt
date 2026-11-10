@@ -1,7 +1,5 @@
-joblib==1.6.0
-lightgbm==4.7.0
-numpy==2.4.6
-openpyxl==3.1.5
-pandas==3.1.1
-scikit-learn==1.9.1
-scipy==1.17.1
+# Everything for working on the project: running the app, retraining the model, and the tests.
+-r requirements-app.txt
+openpyxl==3.1.5        # reads the organisers' Excel workbook when the model is retrained
+pytest==9.2.0          # the test suite
+httpx==0.28.1          # used by the API tests

@@ -1,0 +1,12 @@
+# Only what the image needs goes into the build: the app, the training code for the model classes, and the
+# list of packages. Data, notes, secrets and the virtual environment stay out.
+*
+!requirements-app.txt
+!acumain
+!risk_model
+risk_model/*
+!risk_model/stage2
+risk_model/stage2/*
+!risk_model/stage2/case1.py
+**/__pycache__
+**/*.pyc

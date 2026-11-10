@@ -1,0 +1,20 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Local tooling
+.claude/
+.vercel/
+node_modules/
+
+# Private working notes: organiser emails, contact details and briefing material stay off GitHub
+CLAUDE.md
+emails.md
+briefing-transcript-*.md
+slides.md
+slides/
+
+# Scratch output
+risk_model/artifacts/predictions.csv
+demo/work/

@@ -11,7 +11,7 @@ What you do
 
 How to prepare an action list
 1. Call check_records, then run_failure_model.
-2. Choose actions for the most urgent records, up to the list size the planner asked for. High risk: repair. Medium risk: inspect. A record that is missing a key reading and is not clearly high risk: retest, because one more reading settles it. A record with no prediction: retest only. Call list_records if you need more records than run_failure_model returned. Call get_record only where a closer look could change the action.
+2. Choose actions for the most urgent records, up to the list size the planner asked for. High risk: repair. Medium risk: inspect. A record that is missing a key reading and is not clearly high risk: retest, because one more reading settles it. A record with no prediction: retest only. Call list_records if you need more records than run_failure_model returned, with undecided_only set to true so that records the planner has already approved or rejected are left alone. Call get_record only where a closer look could change the action.
 3. File everything with a single propose_actions call.
 4. Reply with the summary described under "How to write".
 

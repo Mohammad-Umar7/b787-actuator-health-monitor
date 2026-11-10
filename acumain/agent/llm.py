@@ -17,6 +17,9 @@ from ..config import Settings, cost_usd
 from ..model import ACTIONS
 
 FALLBACK_BETA = "server-side-fallback-2026-07-01"
+# Words in a 400 message that point at one of the optional request features, rather than at the request itself.
+OPTIONAL_FEATURE_HINTS = ("strict", "fallback", "cache_control", "beta", "additionalproperties", "input_schema", "schema",
+                          "extra inputs", "output_config", "effort")
 
 
 @dataclass
@@ -64,6 +67,8 @@ class ClaudeLLM:
         self.label = settings.model
         self._client = None
         self.plain = False        # set after the API rejects an optional request feature; later calls leave them out
+        self.plain_reason = ""
+        self.drop_effort = False
 
     @property
     def client(self):
@@ -89,6 +94,8 @@ class ClaudeLLM:
     def _send(self, request: dict):
         if self.plain:
             request = {**request, "tools": [{k: v for k, v in tool.items() if k != "strict"} for tool in request["tools"]]}
+            if self.drop_effort:
+                request.pop("output_config", None)
             return self.client.messages.create(**request)
         # Caches the growing conversation inside a run, so each step re-reads the earlier steps cheaply.
         request = {**request, "cache_control": {"type": "ephemeral"}}
@@ -100,17 +107,30 @@ class ClaudeLLM:
     def reply(self, system: str, tools: list, messages: list, ctx=None) -> Reply:
         import anthropic
         request, notices = self._request(system, tools, messages), []
+        first_call = not any(isinstance(m, dict) and m.get("role") == "assistant" for m in messages)
+        if self.plain and first_call:
+            notices.append(self.plain_reason)           # every run says so, not only the one where it was discovered
         try:
             try:
                 response = self._send(request)
             except anthropic.BadRequestError as err:
-                if self.plain:
+                # The request uses a few optional features: strict tool schemas, automatic caching, server-side
+                # fallback. If the API names one of them in a 400, drop them for the rest of this process and try
+                # once more. This is done only at the start of a conversation: changing the tool list later would
+                # itself be rejected, because earlier replies are tied to the request they answered. Any other
+                # 400 (a low credit balance, say) is a real error and is reported as one.
+                text = _short(err).lower()
+                if self.plain or not first_call or not any(hint in text for hint in OPTIONAL_FEATURE_HINTS):
                     raise
-                # An optional feature (strict tool schemas, automatic caching, server-side fallback) was not
-                # accepted. Drop them for the rest of this process and try the plain request once.
                 self.plain = True
-                notices.append(f"The API did not accept an optional request feature ({_short(err)}). Continuing without strict schemas, automatic caching and fallback.")
+                self.drop_effort = "output_config" in text or "effort" in text
+                self.plain_reason = (f"The API did not accept an optional request feature ({_short(err)}). "
+                                     "Requests are now sent without strict schemas, automatic caching and fallback.")
+                notices.append(self.plain_reason)
                 response = self._send(request)
+            return self._read(response, notices)
+        except LLMError:
+            raise
         except anthropic.AuthenticationError as err:
             raise LLMError("the API key was rejected") from err
         except anthropic.PermissionDeniedError as err:
@@ -128,7 +148,12 @@ class ClaudeLLM:
         except anthropic.APIStatusError as err:
             raise LLMError(f"Claude is temporarily unavailable (status {err.status_code})" if err.status_code >= 500
                            else f"the API returned an error ({_short(err)})") from err
+        except Exception as err:
+            # Anything else (a reply the SDK could not parse, a reply in an unexpected shape) must still end as an
+            # LLMError, so the run is handed to the built-in planner instead of failing.
+            raise LLMError(f"Claude's reply could not be used ({type(err).__name__})") from err
 
+    def _read(self, response, notices: list) -> Reply:
         blocks = []
         for block in response.content:
             if block.type == "text":
@@ -190,25 +215,34 @@ class OfflinePlanner:
                              "- Nothing was proposed. No risk was estimated in its place.\n"
                              "- Try again once the model is back.")
         result = run["result"]
-        listed = [c for c in calls.get("list_records", []) if not c["is_error"]]
+        # The planner reads the ranking itself, from the top, and uses only the pages it asked for. If Claude
+        # worked on this run first, its listings may start anywhere or be filtered, so they are not relied on.
+        listed = [c for c in calls.get("list_records", []) if not c["is_error"] and str(c.get("call_id", "")).startswith("offline_")]
         ranked = [c for c in listed if c["args"].get("level") == "Any"]
         records = [r for c in ranked for r in c["result"]["records"]]
-        more_to_read = ranked and ranked[-1]["result"]["matching"] > len(records) if ranked else True
-        actionable = [r for r in records if r.get("suggested_action") in ("repair", "inspect", "retest")]
+        actionable = [r for r in records if r["level"] != "Not scored" and r.get("suggested_action") in ("repair", "inspect", "retest")]
         if "propose_actions" not in calls:
-            if len(actionable) < self.list_size and more_to_read and len(ranked) < 4 and (not records or records[-1].get("suggested_action") != "monitor"):
-                return self._call("list_records", level="Any", only_missing_readings=False, limit=min(30, self.list_size), offset=len(records))
+            # Records come highest risk first, so the first Low-risk one (or a short page) ends the search.
+            last = ranked[-1] if ranked else None
+            finished = bool(last) and (last["result"]["returned"] < last["args"]["limit"]
+                                       or records[-1]["level"] == "Not scored" or records[-1].get("suggested_action") == "monitor")
+            if len(actionable) < self.list_size and not finished and len(ranked) < 8:
+                return self._call("list_records", level="Any", only_missing_readings=False, undecided_only=True,
+                                  limit=min(30, max(self.list_size, 5)), offset=len(records))
             # A few places on the list are kept for records that could not be scored: a repeat test is cheap,
             # and until it is done nobody knows how urgent those aircraft are.
             reserved = min(int(result.get("not_scored") or 0), max(1, self.list_size // 8), 5)
-            unscored_listed = any(c["args"].get("level") == "Not scored" for c in listed)
-            if reserved and not unscored_listed:
-                return self._call("list_records", level="Not scored", only_missing_readings=False, limit=reserved, offset=0)
-            unscored = [r for c in listed if c["args"].get("level") == "Not scored" for r in c["result"]["records"]]
-            scored_actions = [r for r in actionable if r["level"] != "Not scored"][: max(self.list_size - len(unscored), 0)]
+            unscored_calls = [c for c in listed if c["args"].get("level") == "Not scored"]
+            if reserved and not unscored_calls:
+                return self._call("list_records", level="Not scored", only_missing_readings=False, undecided_only=True, limit=reserved, offset=0)
+            unscored = [r for c in unscored_calls for r in c["result"]["records"]]
+            scored_actions = actionable[: max(self.list_size - len(unscored), 0)]
             chosen = scored_actions + unscored[: self.list_size - len(scored_actions)]
             if not chosen:
-                return self._say(f"**No aircraft in this review needs action.** All {result['scored']} scored records are Low risk.")
+                levels = result["by_level"]
+                if levels["High"] + levels["Medium"] + levels["Not scored"] == 0:
+                    return self._say(f"**No aircraft in this review needs action.** All {result['scored']:,} scored records are Low risk.")
+                return self._say("**Nothing new to propose.** Every aircraft in this review that needs action already has a decision from you.")
             return self._call("propose_actions", actions=[
                 {"record_id": r["record_id"], "action": r.get("suggested_action", "retest"),
                  "note": "No prediction was possible; both key readings are missing." if r["level"] == "Not scored" else ""} for r in chosen])
@@ -219,7 +253,10 @@ class OfflinePlanner:
         if proposed["is_error"]:
             return f"**The action list could not be filed.** {proposed['result'].get('error')}"
         filed, levels = proposed["result"], result["by_level"]
-        top = [r for r in actionable if r.get("suggested_action") == "repair"][:3]
+        # The summary describes what was actually filed, whoever filed it.
+        asked = {a.get("record_id") for a in (proposed["args"] or {}).get("actions", []) if a.get("action") == "repair"}
+        not_filed = {n.get("record_id") for n in filed.get("not_filed", [])}
+        top = [r for r in actionable if r["record_id"] in asked and r["record_id"] not in not_filed][:3]
         selected = result["scope"] != "all records in the batch"
         expected = round(result["expected_failures_in_30_days"])
         lines = [f"**{levels['High']:,} of the {result['scored']:,} {'selected' if selected else 'scored'} aircraft "
@@ -240,9 +277,12 @@ class OfflinePlanner:
             notes.append(f"- {result['high_risk_missing_a_key_reading']} High-risk predictions were made without one key reading.")
         if notes:
             lines += ["", "**Data to be aware of**", *notes]
-        beyond = levels["High"] - filed["by_action"].get(ACTIONS["repair"], 0)
+        decided = int(result.get("high_risk_already_decided_by_planner") or 0)
+        if decided:
+            lines.insert(1, f"You have already decided on {decided:,} of them; those were left alone.")
+        beyond = levels["High"] - filed["by_action"].get(ACTIONS["repair"], 0) - decided
         if beyond > 0:
-            lines += ["", "**Not covered**", f"- {beyond} more High-risk aircraft are beyond this list of {self.list_size}. Raise the list size, or run again after deciding on these."]
+            lines += ["", "**Not covered**", f"- {beyond:,} more High-risk aircraft are beyond this list of {self.list_size}. Raise the list size, or run again after deciding on these."]
         lines += ["", "A Yes from the model is a reason to review, not a confirmed failure."]
         return "\n".join(lines)
 

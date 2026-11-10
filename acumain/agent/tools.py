@@ -44,16 +44,19 @@ TOOLS = [
         "name": "list_records",
         "description": (
             "List scored records, highest risk first, to choose which ones to act on. Use it to read beyond the top "
-            "records that run_failure_model returned, to look at one risk level, or to find records with missing readings."),
+            "records that run_failure_model returned, to look at one risk level, or to find records with missing readings. "
+            "Each record shows any decision the planner has already taken on it."),
         "input_schema": {
             "type": "object",
             "properties": {
                 "level": {"type": "string", "enum": list(LEVELS), "description": "Risk level to list. Use Any for all levels."},
                 "only_missing_readings": {"type": "boolean", "description": "True to list only records with a missing or unusable reading."},
+                "undecided_only": {"type": "boolean", "description": "True to leave out records the planner has already approved or rejected an action for. "
+                                                                     "Use true when choosing what to propose, so a new list moves on to the next records."},
                 "limit": {"type": "integer", "description": f"How many records to return, at most {MAX_LIST}."},
                 "offset": {"type": "integer", "description": "How many records to skip from the top. Use 0 to start at the highest risk."},
             },
-            "required": ["level", "only_missing_readings", "limit", "offset"],
+            "required": ["level", "only_missing_readings", "undecided_only", "limit", "offset"],
             "additionalProperties": False,
         },
     },
@@ -113,7 +116,8 @@ TOOL_NAMES = [t["name"] for t in TOOLS]
 
 def definitions(strict: bool) -> list:
     """Tool definitions for the API. With strict on, the API guarantees the arguments match the schema."""
-    return [{**tool, "strict": True} for tool in TOOLS] if strict else [dict(tool) for tool in TOOLS]
+    # A tool that takes no input has nothing to validate, so it is left without the flag.
+    return [{**tool, "strict": True} if strict and tool["input_schema"]["properties"] else dict(tool) for tool in TOOLS]
 
 
 class ToolError(Exception):
@@ -132,7 +136,7 @@ class ToolContext:
     calls: dict = field(default_factory=dict)   # tool name -> list of {"args", "result", "is_error"}; read by the offline planner
 
 
-def execute(name: str, args, ctx: ToolContext) -> tuple[str, bool]:
+def execute(name: str, args, ctx: ToolContext, call_id: str = "") -> tuple[str, bool]:
     """Run one tool call. Returns the result as JSON text, and whether it is an error. Never raises."""
     canonical = next((t for t in TOOL_NAMES if t.lower() == str(name).lower()), None)   # tolerate a letter-case slip
     if canonical is None:
@@ -151,7 +155,7 @@ def execute(name: str, args, ctx: ToolContext) -> tuple[str, bool]:
     except Exception as err:  # a bug in a tool must reach the log and the agent, not crash the run
         result, is_error = {"error": f"The tool failed unexpectedly ({type(err).__name__}: {err})."}, True
     result = jsonable(result)
-    ctx.calls.setdefault(canonical, []).append({"args": args, "result": result, "is_error": is_error})
+    ctx.calls.setdefault(canonical, []).append({"args": args, "result": result, "is_error": is_error, "call_id": call_id})
     # allow_nan=False: a tool result must be strict JSON, or the run stops here rather than send something malformed.
     return json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False), is_error
 
@@ -159,6 +163,15 @@ def execute(name: str, args, ctx: ToolContext) -> tuple[str, bool]:
 # ---------------------------------------------------------------------------- handlers
 def _scope_note(ctx: ToolContext) -> str:
     return f"{len(ctx.scope_ids)} records selected by the planner" if ctx.scope_ids else "all records in the batch"
+
+
+def _decisions(ctx: ToolContext) -> dict:
+    """record_id -> 'approved', 'rejected' or 'awaiting approval', from the newest proposal on each record."""
+    latest: dict = {}
+    for p in ctx.store.list_proposals(batch_id=ctx.batch.id):
+        if p["record_id"] not in latest or p["created_at"] >= latest[p["record_id"]]["created_at"]:
+            latest[p["record_id"]] = p
+    return {rid: ("awaiting approval" if p["status"] == "pending" else p["status"]) for rid, p in latest.items()}
 
 
 def _check_records(_args, ctx: ToolContext) -> dict:
@@ -194,6 +207,9 @@ def _run_failure_model(_args, ctx: ToolContext) -> dict:
     ctx.batches.score(ctx.batch)                     # raises ModelUnavailable
     summary = ctx.batches.summary(ctx.batch, ctx.scope_ids)
     top = ctx.batches.rows(ctx.batch, ids=ctx.scope_ids, limit=10)["rows"]
+    decisions = _decisions(ctx)
+    decided = {rid for rid, state in decisions.items() if state in ("approved", "rejected")}
+    high = ctx.batches.rows(ctx.batch, level="High", ids=ctx.scope_ids, limit=500)["rows"] if decided else []
     return {
         "model_version": ctx.model.version, "yes_from_risk_percent": ctx.model.cutoff, "medium_from_risk_percent": ctx.model.medium,
         "scope": _scope_note(ctx), "scored": summary["records"] - summary["not_scorable"], "not_scored": summary["not_scorable"],
@@ -201,14 +217,17 @@ def _run_failure_model(_args, ctx: ToolContext) -> dict:
         "expected_failures_in_30_days": summary["expected_failures"],
         "high_risk_missing_a_key_reading": summary["high_missing_key_reading"],
         "medium_risk_missing_a_key_reading": summary["medium_missing_key_reading"],
-        "highest_risk": [_agent_row(r) for r in top],
+        "high_risk_already_decided_by_planner": sum(r["record_id"] in decided for r in high),
+        "highest_risk": [_agent_row(r, decisions) for r in top],
         "reading_the_result": "High means the model predicts Yes (failure within 30 days). A Yes is a reason to review, not a confirmed "
                               "failure, and a No does not guarantee safety.",
     }
 
 
-def _agent_row(row: dict) -> dict:
+def _agent_row(row: dict, decisions: dict | None = None) -> dict:
     out = {"record_id": row["record_id"], "aircraft": row["aircraft_id"], "level": row["level"]}
+    if decisions and row["record_id"] in decisions:
+        out["planner_decision"] = decisions[row["record_id"]]
     if row.get("risk") is not None:
         out["risk_percent"] = int(row["risk"])        # whole percent, rounded down, exactly as the dashboard shows it
     for key in ("reason", "time_left", "suggested_action"):
@@ -231,8 +250,11 @@ def _list_records(args, ctx: ToolContext) -> dict:
         raise ToolError(f"level must be one of {', '.join(LEVELS)}.")
     limit = max(1, min(int(args.get("limit", 10) or 10), MAX_LIST))
     offset = max(0, int(args.get("offset", 0) or 0))
-    page = ctx.batches.rows(ctx.batch, level=level, only_issues=bool(args.get("only_missing_readings")), ids=ctx.scope_ids, offset=offset, limit=limit)
-    return {"matching": page["total"], "offset": offset, "returned": len(page["rows"]), "records": [_agent_row(r) for r in page["rows"]]}
+    decisions = _decisions(ctx)
+    decided = {rid for rid, state in decisions.items() if state in ("approved", "rejected")} if args.get("undecided_only") else None
+    page = ctx.batches.rows(ctx.batch, level=level, only_issues=bool(args.get("only_missing_readings")), ids=ctx.scope_ids, offset=offset, limit=limit,
+                            exclude=decided)
+    return {"matching": page["total"], "offset": offset, "returned": len(page["rows"]), "records": [_agent_row(r, decisions) for r in page["rows"]]}
 
 
 def _get_record(args, ctx: ToolContext) -> dict:

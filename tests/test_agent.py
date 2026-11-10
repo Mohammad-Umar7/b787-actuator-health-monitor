@@ -129,9 +129,10 @@ def test_tool_schemas_are_valid_for_strict_mode():
             walk(schema["items"])
         assert not {"minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems"} & set(schema)   # not supported with strict
     for tool in tools.definitions(True):
-        assert tool["strict"] is True and len(tool["description"]) > 80
+        assert len(tool["description"]) > 80
+        assert tool.get("strict", False) is bool(tool["input_schema"]["properties"])      # nothing to be strict about without inputs
         walk(tool["input_schema"])
-    assert "strict" not in tools.definitions(False)[0]
+    assert all("strict" not in tool for tool in tools.definitions(False))
 
 
 # ---------------------------------------------------------------------------- built-in planner, end to end
@@ -289,7 +290,8 @@ def test_real_sdk_request_shape_and_reply_parsing(settings):
     assert first["model"] == "claude-sonnet-5-5" and first["max_tokens"] == 4000 and first["output_config"] == {"effort": "medium"}
     assert first["fallbacks"] == "default" and seen[0]["headers"]["anthropic-beta"] == "server-side-fallback-2026-07-01"
     assert first["cache_control"] == {"type": "ephemeral"} and first["system"][0]["cache_control"] == {"type": "ephemeral"}
-    assert [t["name"] for t in first["tools"]] == tools.TOOL_NAMES and all(t["strict"] for t in first["tools"])
+    assert [t["name"] for t in first["tools"]] == tools.TOOL_NAMES
+    assert [t["name"] for t in first["tools"] if t.get("strict")] == ["list_records", "get_record", "propose_actions"]
     assert "temperature" not in first and "thinking" not in first and "tool_choice" not in first          # none of these is accepted or needed
     assert second["system"] == first["system"] and second["tools"] == first["tools"]
     assistant, results = second["messages"][1], second["messages"][2]
@@ -336,3 +338,75 @@ def test_real_sdk_refusal_is_reported(settings):
 
 def test_no_key_means_no_claude_client(svc):
     assert svc.claude is None and svc.agent_status()["mode"] == "offline" and "No API key" in svc.agent_status()["reason"]
+
+
+# ---------------------------------------------------------------------------- found by an independent review
+def test_planner_taking_over_ignores_listings_it_did_not_ask_for(settings):
+    """Claude listed a filtered page from the middle of the ranking, then failed. The planner must still start from the top."""
+    llm = ScriptedLLM([tool_reply(("t1", "check_records", {}), ("t2", "run_failure_model", {})),
+                       tool_reply(("t3", "list_records", {"level": "Any", "only_missing_readings": True, "undecided_only": False, "limit": 15, "offset": 10})),
+                       LLMError("Claude did not answer in time")])
+    svc = with_claude(settings, llm)
+    run = finished(svc, svc.start_run(SAMPLE_ID, "review", list_size=12, wait=True))
+    top = {r["record_id"] for r in svc.batches.rows(svc.batch(SAMPLE_ID), limit=11)["rows"]}
+    assert {p["record_id"] for p in run["proposals"] if p["action"] == "repair"} == top and len(run["proposals"]) == 12
+
+
+def test_preparing_the_list_again_moves_on_past_decided_records(svc):
+    first = finished(svc, svc.start_run(SAMPLE_ID, "review", list_size=8, wait=True))
+    svc.decide_many(SAMPLE_ID, "approved", action="repair")
+    svc.decide_many(SAMPLE_ID, "rejected")
+    second = finished(svc, svc.start_run(SAMPLE_ID, "review", list_size=8, wait=True))
+    before, after = {p["record_id"] for p in first["proposals"]}, {p["record_id"] for p in second["proposals"]}
+    assert len(before) == 8 and len(after) == 8 and not before & after
+    filed = [s for s in second["steps"] if s["name"] == "propose_actions"][0]["output"]
+    assert filed["filed_for_review"] == 8 and filed["not_filed"] == []
+    assert "already decided on 7 of them" in second["final_text"] and "189 more High-risk aircraft" in second["final_text"]
+
+
+def test_nothing_new_is_proposed_when_everything_actionable_is_decided(svc):
+    chosen = ["Q-18857260", "Q-10012035"]
+    svc.start_run(SAMPLE_ID, "review", record_ids=chosen, wait=True)
+    svc.decide_many(SAMPLE_ID, "approved")
+    again = finished(svc, svc.start_run(SAMPLE_ID, "review", record_ids=chosen, wait=True))
+    assert again["proposals"] == [] and "already has a decision from you" in again["final_text"]
+
+
+def test_a_400_that_is_not_about_an_optional_feature_is_a_real_error(settings):
+    seen = []
+    llm = ClaudeLLM(settings)
+    llm._client = fake_claude([API_ERROR(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API.")], seen)
+    with pytest.raises(LLMError) as err:
+        llm.reply("system", tools.definitions(True), [{"role": "user", "content": "hi"}])
+    assert "credit balance" in str(err.value) and not llm.plain and len(seen) == 1
+
+
+def test_optional_features_are_never_dropped_in_the_middle_of_a_run(settings):
+    seen = []
+    llm = ClaudeLLM(settings)
+    llm._client = fake_claude([API_ERROR(400, "invalid_request_error", "tools.0.strict: Extra inputs are not permitted")], seen)
+    history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": [{"type": "text", "text": "ok"}]}, {"role": "user", "content": "more"}]
+    with pytest.raises(LLMError):
+        llm.reply("system", tools.definitions(True), history)
+    assert not llm.plain and len(seen) == 1
+
+
+def test_later_runs_say_when_optional_features_are_off(settings):
+    seen = []
+    llm = ClaudeLLM(settings)
+    llm._client = fake_claude([API_ERROR(400, "invalid_request_error", "fallbacks: Extra inputs are not permitted"),
+                               api_message([{"type": "text", "text": "one"}], stop_reason="end_turn"),
+                               api_message([{"type": "text", "text": "two"}], stop_reason="end_turn")], seen)
+    llm.reply("system", tools.definitions(True), [{"role": "user", "content": "first run"}])
+    again = llm.reply("system", tools.definitions(True), [{"role": "user", "content": "second run"}])
+    assert again.text == "two" and "optional request feature" in again.notices[0] and "fallbacks" not in seen[2]["body"]
+
+
+def test_a_reply_that_cannot_be_read_hands_over_instead_of_failing(settings):
+    llm = ClaudeLLM(settings)
+    llm._client = anthropic.Anthropic(api_key="dry-run-key", max_retries=0, http_client=anthropic.DefaultHttpxClient(
+        transport=httpx2.MockTransport(lambda request: httpx2.Response(200, text="<html>a gateway page, not an API reply</html>"))))
+    svc = with_claude(settings, llm)
+    run = finished(svc, svc.start_run(SAMPLE_ID, "review", list_size=5, wait=True))
+    assert run["status"] == "completed" and run["mode"] == "claude, then built-in planner" and len(run["proposals"]) == 5
+    assert any("could not be used" in s["output"]["text"] for s in run["steps"] if s["type"] == "notice")

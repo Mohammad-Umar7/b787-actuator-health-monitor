@@ -36,6 +36,7 @@ REQUIRED = ["Hydraulic_Fluid_Grade", *NUMERIC]            # the columns the mode
 TIME_PARTS = ["Actuation_Time_Seconds", "Reference_Actuation_Time_Seconds", "Diagnostic_Load_Ratio"]
 LEAK_PARTS = ["Internal_Leakage_Rate_mL_Min", "Reference_Leakage_Flow_mL_Min"]
 MAX_ROWS = 20000
+MAX_ID_LENGTH = 64
 MAX_BYTES = 8_000_000
 
 
@@ -113,12 +114,21 @@ def check(raw: pd.DataFrame, id_prefix: str = "R") -> Checked:
             frame[col] = None
     blank_id = frame["Case_ID"].isna()
     frame.loc[blank_id, "Case_ID"] = [f"{id_prefix}-{i + 1:05d}" for i in np.flatnonzero(blank_id.to_numpy())]
-    duplicated = frame["Case_ID"].duplicated(keep="first")
-    if duplicated.any():
-        notes.append(f"{int(duplicated.sum())} record(s) repeated an ID that was already in the file; a suffix was added to keep them apart.")
-        frame.loc[duplicated, "Case_ID"] = [f"{cid}#{i + 2}" for i, cid in enumerate(frame.loc[duplicated, "Case_ID"])]
+    frame["Case_ID"] = frame["Case_ID"].astype(str).str.slice(0, MAX_ID_LENGTH)
+    taken, unique, repeats = set(), [], 0
+    for cid in frame["Case_ID"]:
+        candidate, n = cid, 1
+        while candidate in taken:           # also covers a file that already contains "A", "A" and "A#2"
+            n += 1
+            candidate = f"{cid}#{n}"
+        repeats += candidate != cid
+        taken.add(candidate)
+        unique.append(candidate)
+    if repeats:
+        notes.append(f"{repeats} record(s) repeated an ID that was already in the file; a suffix was added to keep them apart.")
+    frame["Case_ID"] = unique
     frame.insert(0, "Record_ID", frame["Case_ID"])
-    frame["Aircraft_ID"] = frame["Aircraft_ID"].fillna(frame["Record_ID"])
+    frame["Aircraft_ID"] = frame["Aircraft_ID"].fillna(frame["Record_ID"]).astype(str).str.slice(0, MAX_ID_LENGTH)
 
     issues: dict = {rid: [] for rid in frame["Record_ID"]}
     ids = frame["Record_ID"].to_numpy()

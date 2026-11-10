@@ -85,7 +85,7 @@ def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings,
         for call in reply.tool_calls:   # a turn may request several tools; all results go back in one message
             seq = store.start_step(run_id, "tool", call.name, call.input)
             started = time.monotonic()
-            content, is_error = tools.execute(call.name, call.input, ctx)
+            content, is_error = tools.execute(call.name, call.input, ctx, call.id)
             store.finish_step(run_id, seq, output=json.loads(content), is_error=is_error, duration_ms=_ms(started))
             result = {"type": "tool_result", "tool_use_id": call.id, "content": content}
             if is_error:

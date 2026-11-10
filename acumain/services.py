@@ -129,7 +129,7 @@ class Services:
             raise RequestError(f"Select at most {MAX_SELECTED} records, or review the whole batch.")
         list_size = max(1, min(int(list_size or 25), MAX_LIST_SIZE))
         selected = selected if selected in known else None
-        screen = {k: v for k, v in (screen or {}).items() if k in ("page", "filter", "search") and isinstance(v, (str, int, float))}
+        screen = {k: str(v)[:80] for k, v in (screen or {}).items() if k in ("page", "filter", "search") and isinstance(v, str) and v.strip()}
 
         status = self.agent_status()
         primary = self.claude if status["mode"] == "claude" else None
@@ -174,10 +174,20 @@ class Services:
         proposal = self.store.decide(proposal_id, decision, note=(note or "").strip()[:300] or None)
         if proposal is None:
             raise RequestError("That proposal does not exist.", 404)
+        if proposal["status"] != decision:
+            # The decision was not applied: someone decided first, or a newer review replaced this proposal.
+            was = "replaced by a newer proposal" if proposal["status"] == "superseded" else f"already {proposal['status']}"
+            raise RequestError(f"This proposal was {was}, so nothing changed. The list has been refreshed.", 409)
         return proposal
 
     def decide_many(self, batch_id: str, decision: str, ids: list | None = None, action: str | None = None) -> list:
         self.batch(batch_id)
         pending = [p for p in self.store.list_proposals(batch_id=batch_id, status="pending")
                    if (not ids or p["id"] in ids) and (not action or p["action"] == action)]
-        return [self.decide(p["id"], decision) for p in pending]
+        done = []
+        for p in pending:
+            try:
+                done.append(self.decide(p["id"], decision))
+            except RequestError:        # decided by someone else in the meantime: leave it as it is
+                continue
+        return done

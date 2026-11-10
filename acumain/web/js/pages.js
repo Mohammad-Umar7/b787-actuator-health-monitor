@@ -63,7 +63,7 @@ function render() {
     const open = a.open === r.id;
     const tokens = (r.input_tokens || 0) + (r.output_tokens || 0) + (r.cache_read_tokens || 0) + (r.cache_write_tokens || 0);
     return `<tr class="run-row ${open ? "is-open" : ""}" data-p="run" data-id="${esc(r.id)}" tabindex="0">
-        <td>${esc(fmtTime(r.started_at))}</td><td class="c-why"><b>${esc(r.kind === "review" ? "Prepare the action list" : r.task)}</b><span class="sub">${esc(names[r.batch_id] || "A batch that was removed")}</span></td>
+        <td>${esc(fmtTime(r.started_at))}</td><td class="c-why">${r.archived ? '<span class="tag tag-off" data-tip="Before a reset|The results and proposals of this run were cleared when the batch was reset.">Before reset</span> ' : ""}<b>${esc(r.kind === "review" ? "Prepare the action list" : r.task)}</b><span class="sub">${esc(names[r.batch_id] || "A batch that was removed")}</span></td>
         <td>${esc(r.mode === "claude" ? modelName(r.model) : r.mode[0].toUpperCase() + r.mode.slice(1))}</td><td>${fmtInt(r.model_calls)} / ${fmtInt(r.tool_calls)}</td><td>${fmtInt(r.proposals)}</td>
         <td>${tokens ? fmtInt(tokens) : "–"}</td><td>${fmtUsd(r.cost_usd || 0)}</td><td>${status(r)}</td><td class="c-go">${icon(open ? "down" : "chevron")}</td></tr>
       ${open ? `<tr class="run-detail"><td colspan="9">${a.detail ? `

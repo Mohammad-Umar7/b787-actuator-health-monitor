@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 from acumain import schema
 from acumain.api import create_app
 from acumain.config import ARTIFACTS
-from acumain.services import SAMPLE_ID
+from acumain.services import SAMPLE_ID, RequestError
 
 
 @pytest.fixture
@@ -42,7 +42,10 @@ def test_nothing_is_executed_until_a_person_approves(svc):
     assert rejected["status"] == "rejected" and rejected["work_order_id"] is None and rejected["decision_note"] == "Aircraft is leaving the fleet."
     orders = svc.store.list_work_orders()
     assert len(orders) == 1 and orders[0]["status"] == "Created (simulated)" and orders[0]["record_id"] == pending[0]["record_id"]
-    assert svc.decide(pending[0]["id"], "rejected")["status"] == "approved"        # a decision is final
+    with pytest.raises(RequestError) as err:                                         # a decision is final
+        svc.decide(pending[0]["id"], "rejected")
+    assert err.value.status == 409 and "already approved" in str(err.value)
+    assert svc.decide(pending[0]["id"], "approved")["work_order_id"] == "WO-SIM-0001"   # saying it twice changes nothing
     assert len(svc.store.list_work_orders()) == 1
 
 
@@ -52,9 +55,10 @@ def test_a_new_review_replaces_pending_proposals_but_never_a_decision(svc):
     svc.decide(first[0]["id"], "approved")
     run = svc.store.get_run(svc.start_run(SAMPLE_ID, "review", list_size=4, wait=True))
     filed = [s for s in run["steps"] if s["name"] == "propose_actions"][0]["output"]
-    assert filed["replaced_earlier_pending_proposals"] == 3 and "already approved" in filed["not_filed"][0]["why"]
+    assert filed["filed_for_review"] == 4 and filed["replaced_earlier_pending_proposals"] == 3 and filed["not_filed"] == []
     now = svc.store.list_proposals(batch_id=SAMPLE_ID)
-    assert len(now) == 4 and sum(p["status"] == "approved" for p in now) == 1 and sum(p["status"] == "pending" for p in now) == 3
+    assert len(now) == 5 and sum(p["status"] == "approved" for p in now) == 1 and sum(p["status"] == "pending" for p in now) == 4
+    assert first[0]["record_id"] not in {p["record_id"] for p in now if p["status"] == "pending"}    # the approved one was left alone
 
 
 def test_bulk_decisions_can_target_one_kind_of_action(svc):
@@ -217,7 +221,10 @@ def test_racing_decisions_create_exactly_one_work_order(svc):
 
     def decide(i):
         barrier.wait()
-        svc.decide(target, "approved" if i % 2 else "rejected")
+        try:
+            svc.decide(target, "approved" if i % 2 else "rejected")
+        except RequestError:        # the losers of the race are told their decision did not apply
+            pass
 
     threads = [threading.Thread(target=decide, args=(i,)) for i in range(10)]
     for t in threads:
@@ -227,3 +234,41 @@ def test_racing_decisions_create_exactly_one_work_order(svc):
     final = svc.store.list_proposals(batch_id=SAMPLE_ID)[0]
     orders = [o for o in svc.store.list_work_orders() if o["proposal_id"] == target]
     assert final["status"] in ("approved", "rejected") and len(orders) == (1 if final["status"] == "approved" else 0)
+
+
+# ---------------------------------------------------------------------------- found by an independent review
+def test_odd_values_from_the_browser_cannot_poison_the_log(client, svc):
+    import json
+    body = b'{"batch_id": "sample", "kind": "review", "list_size": 3, "screen": {"page": NaN, "filter": "High", "search": 123, "junk": "x"}}'
+    started = client.post("/api/agent/runs", content=body, headers={"Content-Type": "application/json"})
+    assert started.status_code in (202, 422)                 # accepted with the bad values dropped, or refused outright
+    if started.status_code == 202:
+        assert wait_for(client, started.json()["run_id"])["context"]["screen"] == {"filter": "High"}
+    run_id = svc.store.create_run("review", "direct", SAMPLE_ID, "test", "test", {"reading": float("nan"), "limit": float("inf")})
+    svc.store.finish_run(run_id, "completed", "done")
+    listing = client.get("/api/agent/runs")
+    assert listing.status_code == 200 and client.get(f"/api/agent/runs/{run_id}").json()["context"] == {"reading": None, "limit": None}
+    json.dumps(svc.store.list_runs(), allow_nan=False)        # strict JSON all the way through
+
+
+def test_reset_archives_old_runs_so_the_queue_starts_clean(client, svc):
+    review(client, list_size=3)
+    assert client.post(f"/api/batches/{SAMPLE_ID}/reset").status_code == 200
+    review(client, list_size=3)
+    runs = client.get("/api/agent/runs").json()
+    assert sorted(r["archived"] for r in runs) == [False, True]
+    assert next(r for r in runs if r["archived"])["started_at"] <= next(r for r in runs if not r["archived"])["started_at"]
+
+
+def test_a_decision_that_did_not_apply_is_reported(client, svc):
+    review(client, list_size=3)
+    first, second = client.get(f"/api/batches/{SAMPLE_ID}/proposals").json()[:2]
+    decide = lambda pid, what: client.post(f"/api/proposals/{pid}/decision", json={"decision": what})
+    assert decide(first["id"], "rejected").status_code == 200
+    late = decide(first["id"], "approved")
+    assert late.status_code == 409 and "already rejected" in late.json()["detail"] and client.get("/api/work-orders").json() == []
+    assert decide(first["id"], "rejected").json()["status"] == "rejected"          # the same decision again is harmless
+    review(client, list_size=3)                                                    # a new review replaces what was still pending
+    stale = decide(second["id"], "approved")
+    assert stale.status_code == 409 and "replaced by a newer proposal" in stale.json()["detail"]
+    assert decide("P-9999", "approved").status_code == 404

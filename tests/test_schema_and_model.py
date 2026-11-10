@@ -181,3 +181,11 @@ def test_extra_columns_are_ignored_and_said_so():
     frame["Technician"] = "A. Person"
     checked = schema.check(frame)
     assert "Technician" not in checked.frame.columns and "Ignored 1 column" in checked.notes[0]
+
+
+def test_repeated_ids_stay_unique_even_when_the_suffix_is_already_taken():
+    frame = pd.concat([one_row(Case_ID="A"), one_row(Case_ID="A"), one_row(Case_ID="A#2"), one_row(Case_ID="x" * 300, Aircraft_ID="y" * 300)], ignore_index=True)
+    checked = schema.check(frame)
+    ids = list(checked.frame["Record_ID"])
+    assert ids[:3] == ["A", "A#2", "A#2#2"] and len(set(ids)) == 4 and "2 record(s) repeated an ID" in checked.notes[0]
+    assert len(ids[3]) == schema.MAX_ID_LENGTH and len(checked.frame["Aircraft_ID"].iloc[3]) == schema.MAX_ID_LENGTH

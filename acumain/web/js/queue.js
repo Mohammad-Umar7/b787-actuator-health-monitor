@@ -40,7 +40,7 @@ export async function show(arg) {
     </div>`;
   renderToolbar();
   const [runs] = await Promise.all([api.runs(60), loadRecords(), loadProposals()]);
-  const mine = runs.filter((r) => r.batch_id === state.batchId);
+  const mine = runs.filter((r) => r.batch_id === state.batchId && !r.archived);
   const lastReview = mine.find((r) => r.kind === "review" && r.status !== "running");
   const lastQuestion = mine.find((r) => r.kind === "question" && r.status !== "running");
   const full = new Map();
@@ -463,6 +463,7 @@ async function decide(id, decision) {
     if (q.drawer) openDrawer(q.drawer.record_id);
   } catch (err) {
     toast(err.message, "error");
+    if (err.status === 409) { await reload().catch(() => {}); if (q.drawer) openDrawer(q.drawer.record_id); }
   }
 }
 

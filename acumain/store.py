@@ -12,12 +12,15 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .jsonsafe import jsonable
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY, kind TEXT, task TEXT, batch_id TEXT, status TEXT, mode TEXT, model TEXT,
   started_at TEXT, finished_at TEXT, context TEXT, final_text TEXT, error TEXT,
   input_tokens INTEGER DEFAULT 0, output_tokens INTEGER DEFAULT 0,
-  cache_write_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0);
+  cache_write_tokens INTEGER DEFAULT 0, cache_read_tokens INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0,
+  archived INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS steps (
   run_id TEXT, seq INTEGER, type TEXT, name TEXT, status TEXT, input TEXT, output TEXT, is_error INTEGER DEFAULT 0,
   started_at TEXT, duration_ms INTEGER, tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0, cost_usd REAL DEFAULT 0,
@@ -38,7 +41,7 @@ def now() -> str:
 
 
 def _json(value) -> str:
-    text = json.dumps(value, default=str, ensure_ascii=False)
+    text = json.dumps(jsonable(value), ensure_ascii=False, allow_nan=False)
     return text if len(text) <= MAX_STORED else json.dumps({"truncated": True, "preview": text[:MAX_STORED]}, ensure_ascii=False)
 
 
@@ -46,7 +49,7 @@ def _load(text):
     if text is None:
         return None
     try:
-        return json.loads(text)
+        return jsonable(json.loads(text))
     except json.JSONDecodeError:
         return text
 
@@ -61,6 +64,8 @@ class Store:
         self._lock = threading.RLock()
         with self._lock:
             self._db.executescript(SCHEMA)
+            if "archived" not in [row[1] for row in self._db.execute("PRAGMA table_info(runs)")]:   # a database from before this column existed
+                self._db.execute("ALTER TABLE runs ADD COLUMN archived INTEGER DEFAULT 0")
             # A run left "running" by a previous process can never finish.
             self._db.execute("UPDATE runs SET status='failed', error='The server stopped before this run finished.', finished_at=? WHERE status='running'", (now(),))
             self._db.execute("UPDATE steps SET status='failed' WHERE status='running'")
@@ -122,7 +127,7 @@ class Store:
         run = self._one("SELECT * FROM runs WHERE id=?", (run_id,))
         if not run:
             return None
-        run["context"] = _load(run["context"])
+        run["context"], run["archived"] = _load(run["context"]), bool(run["archived"])
         steps = self._all("SELECT * FROM steps WHERE run_id=? ORDER BY seq", (run_id,))
         for step in steps:
             step["input"], step["output"], step["is_error"] = _load(step["input"]), _load(step["output"]), bool(step["is_error"])
@@ -136,7 +141,7 @@ class Store:
                          "(SELECT COUNT(*) FROM proposals p WHERE p.run_id=r.id) AS proposals "
                          "FROM runs r ORDER BY r.started_at DESC LIMIT ?", (limit,))
         for run in runs:
-            run["context"] = _load(run["context"])
+            run["context"], run["archived"] = _load(run["context"]), bool(run["archived"])
         return runs
 
     def active_run(self, batch_id: str) -> str | None:
@@ -209,7 +214,10 @@ class Store:
         return self._all("SELECT * FROM work_orders ORDER BY created_at DESC")
 
     def clear_batch(self, batch_id: str) -> None:
+        """Forget a batch's proposals and work orders. Its runs stay in the activity log, marked as archived,
+        so the review queue no longer shows a summary of results that are gone."""
         with self._lock:
             self._db.execute("DELETE FROM work_orders WHERE batch_id=?", (batch_id,))
             self._db.execute("DELETE FROM proposals WHERE batch_id=?", (batch_id,))
+            self._db.execute("UPDATE runs SET archived=1 WHERE batch_id=?", (batch_id,))
             self._db.commit()

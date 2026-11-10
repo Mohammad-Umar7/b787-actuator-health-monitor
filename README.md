@@ -154,7 +154,7 @@ pip install -r requirements.txt
 python -m pytest tests -q
 ```
 
-70 tests, none of which needs an API key or spends anything. They cover the input checks (wrong columns, semicolon files, decimal commas, non-numbers, out-of-range values), the model service, every tool, the agent loop end to end, approvals, and the HTTP API. The Claude integration is tested by pointing the real Anthropic SDK at a fake endpoint, which checks the exact request the app sends and how it reads the replies.
+83 tests, none of which needs an API key or spends anything. They cover the input checks (wrong columns, semicolon files, decimal commas, non-numbers, out-of-range values), the model service, every tool, the agent loop end to end, approvals, and the HTTP API. The Claude integration is tested by pointing the real Anthropic SDK at a fake endpoint, which checks the exact request the app sends and how it reads the replies.
 
 ### Run without Docker
 

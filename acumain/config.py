@@ -80,7 +80,7 @@ def get_settings() -> Settings:
         model=os.environ.get("ACUMAIN_MODEL", "claude-sonnet-5-5").strip(),
         effort=effort if effort in ("low", "medium", "high") else "medium",
         max_steps=int(_number("ACUMAIN_MAX_STEPS", 12)),
-        max_output_tokens=int(_number("ACUMAIN_MAX_OUTPUT_TOKENS", 4000)),
+        max_output_tokens=int(_number("ACUMAIN_MAX_OUTPUT_TOKENS", 8000)),
         daily_usd_limit=_number("ACUMAIN_DAILY_USD_LIMIT", 10.0),
         run_usd_limit=_number("ACUMAIN_RUN_USD_LIMIT", 0.50),
         use_fallbacks=_flag("ACUMAIN_FALLBACKS", True),

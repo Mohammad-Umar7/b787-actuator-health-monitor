@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from . import schema
+from .jsonsafe import jsonable
 from .model import ACTIONS, LEVEL_NAMES, RiskModel, number
 from .store import now
 
@@ -172,10 +173,13 @@ class BatchStore:
                 "precision": round(100 * tp / max(tp + fp, 1), 1), "recall": round(100 * tp / max(tp + fn, 1), 1)}
 
     def rows(self, batch: Batch, level: str | None = None, query: str | None = None, only_issues: bool = False,
-             ids: list | None = None, sort: str = "risk", descending: bool = True, offset: int = 0, limit: int = 50) -> dict:
+             ids: list | None = None, sort: str = "risk", descending: bool = True, offset: int = 0, limit: int = 50,
+             exclude: set | None = None) -> dict:
         t = self.table(batch)
         if ids:
             t = t[t["record_id"].isin(ids)]
+        if exclude:
+            t = t[~t["record_id"].isin(exclude)]
         if level and level != "Any":
             t = t[t["level"] == level]
         if only_issues:
@@ -251,21 +255,3 @@ class BatchStore:
 
 def action_label(action: str) -> str:
     return ACTIONS.get(action, action)
-
-
-def jsonable(value):
-    """Make a value safe to send as JSON: missing values (NaN, NA, NaT) become null, numpy types become plain ones."""
-    if isinstance(value, dict):
-        return {k: jsonable(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [jsonable(v) for v in value]
-    if isinstance(value, np.generic):
-        value = value.item()
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    if isinstance(value, float):
-        return None if np.isnan(value) or np.isinf(value) else value
-    try:
-        return None if pd.isna(value) else str(value)
-    except (TypeError, ValueError):
-        return str(value)

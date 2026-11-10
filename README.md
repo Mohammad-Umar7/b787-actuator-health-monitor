@@ -12,12 +12,23 @@ run_dashboard.bat --data "path\to\new file.xlsx"
 ```
 The file needs the columns `Leakage_Level`, `Operation_Time` and `Actuator_Age_Months`. Excel and CSV both work.
 
+Live copy: https://actuator-health-monitor.vercel.app
+
 ## What the dashboard shows
+It is written for managers: what to expect, and what to decide.
 - How many aircraft are High, Medium and Low risk. Click a tile to filter.
 - An alert naming the aircraft that need action.
-- The fleet ranked by risk, with the likely range and the action for each level. Click a column heading to sort.
+- Fleet outlook: failures expected in the next 30 days if nothing is done, the share of the fleet at High risk, the change since last month, and the trend by month.
+- Fleet priorities: every aircraft ranked by risk, with a likely range and a decision. Click a column heading to sort.
 - For the selected aircraft: its risk, the reasons behind it, its readings, and its risk month by month.
 - A month selector to see the fleet as it was in any month.
+
+## Update the live copy
+```
+.venv\Scripts\python dashboard\server.py --export --data "path\to\new file.xlsx"
+cd dashboard\static
+vercel deploy --prod --yes
+```
 
 ## Train or retrain the model
 ```
@@ -33,3 +44,5 @@ Restart the dashboard afterwards so it loads the new model.
 | `risk_model/` | The model code, its tests, and `RISK_MODEL.md`, a plain-English explanation |
 | `risk_model/artifacts/` | The trained model, validation report and scores |
 | `dashboard/` | `server.py` and the page in `static/` |
+| `deliverables/` | The filled submission deck, the script that builds it, and screenshots |
+| `demo/` | The narrated demo video and its subtitles |

@@ -27,19 +27,24 @@ A weighted average of two models:
 - **75% logistic regression** with squared and pairwise terms. It is smooth and gave the best F1 on unseen aircraft.
 - **25% gradient-boosted trees (LightGBM)**, not allowed to lower the risk when a wear reading rises.
 
-A row is predicted **Yes when its risk is 0.29 or more**. We chose that cut-off because it gives the best average F1 over 300 resampled fleets, not one lucky split.
+A row is predicted **Yes when its risk is 0.32 or more**.
+
+How we chose that cut-off: every training aircraft starts on an original actuator that was already part-worn. The test set is recorded months later, when nearly every aircraft is on a replacement fitted new. So we picked the cut-off with the best average F1 over 300 resampled fleets on the replacement actuators, which are the kind the test set has. On all training rows the best cut-off is 0.29, and 0.32 scores almost the same there (0.708 against 0.709), so the choice costs almost nothing.
 
 ## How good is it
 Always tested on aircraft the model never saw.
 
 | Check | F1 | Precision | Recall | Accuracy |
 |---|---|---|---|---|
-| Cross-validation (5 folds × 4 repeats) | **0.71** | 0.64 | 0.79 | 0.95 |
+| Cross-validation (5 folds × 4 repeats) | **0.71** | 0.66 | 0.76 | 0.95 |
+| Same check, replacement actuators only (the kind in the test set) | 0.74 | 0.70 | 0.79 | 0.96 |
 | One split: train on 80 aircraft, test on 20 | 0.68 | 0.63 | 0.74 | 0.94 |
 
-- Out of 797 real failures-within-30-days, it catches about 631 and misses 166, with about 351 false alarms.
+- Out of 797 real failures-within-30-days, it catches about 608 and misses 189, with about 310 false alarms.
 - From fleet to fleet, F1 moves between 0.68 and 0.73.
-- On the test set it predicts **214 Yes** out of 2,000.
+- On the test set it predicts **203 Yes** out of 2,000.
+
+Counted per failure instead of per weekly row (checked at cut-off 0.29): of 187 actuator failures in the training data, 185 were flagged at least once in their final 30 days, and the first flag typically came 5 weeks before the last record. Most false alarms were early warnings: 88% were on actuators that failed within 3 months.
 
 ## Why not higher?
 Each test row is one snapshot. Readings four weeks before a failure look almost the same as readings six weeks before. We tried logistic regression, LightGBM, XGBoost, a remaining-life regressor, several blends and smarter handling of blanks. **They all stop near F1 0.70.** That is the limit of the information in one row.

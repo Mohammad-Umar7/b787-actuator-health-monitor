@@ -1,6 +1,6 @@
 @echo off
 rem Starts the dashboard and opens it in the browser.
-rem To show a new data file:  run_dashboard.bat --data "path\to\new file.xlsx"
+rem After the model or the data changes:  run_dashboard.bat --rebuild
 cd /d "%~dp0"
 if not exist ".venv\Scripts\python.exe" (
   echo First run: setting up Python. This takes a minute...

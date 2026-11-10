@@ -224,22 +224,50 @@ def confusion(y, flagged):
             "f1": 2 * tp / max(2 * tp + fp + fn, 1), "accuracy": (tp + tn) / len(y)}
 
 
-def choose_threshold(y, scores, groups, n_boot=300, seed=0):
-    """The cut-off with the best average F1 over many resampled fleets, so it does not chase one lucky split."""
+def choose_threshold(y, scores, groups, n_boot=300, seed=0, weights=None):
+    """The cut-off with the best average F1 over many resampled fleets, so it does not chase one lucky split.
+    Optional row weights make the resampled fleets resemble another population."""
     grid = np.round(np.arange(0.15, 0.61, 0.01), 2)
     rng = np.random.default_rng(seed)
     names = np.unique(groups)
     rows_of = {a: np.where(groups == a)[0] for a in names}
+    w = np.ones(len(y)) if weights is None else np.asarray(weights, float)
     total = np.zeros(len(grid))
     for _ in range(n_boot):
         rows = np.concatenate([rows_of[a] for a in rng.choice(names, len(names))])
-        s, yy = scores[rng.integers(len(scores))][rows], y[rows]
-        positives = yy.sum()
+        s, yy, ww = scores[rng.integers(len(scores))][rows], y[rows], w[rows]
+        positives = ww[yy == 1].sum()
         for j, cut in enumerate(grid):
             flagged = s >= cut
-            total[j] += 2 * (flagged & (yy == 1)).sum() / max(flagged.sum() + positives, 1)
+            total[j] += 2 * ww[flagged & (yy == 1)].sum() / max(ww[flagged].sum() + positives, 1e-9)
     curve = total / n_boot
     return float(grid[int(np.argmax(curve))]), dict(zip(grid.tolist(), curve.round(4).tolist()))
+
+
+def test_like_rows(train, test):
+    """Which training rows resemble the test set, and how to weight them. Used only to choose the cut-off.
+
+    Every training aircraft starts on an original actuator that was already part-worn on day one. The test set
+    is recorded months later, when nearly every aircraft is on a replacement that was fitted new. So the cut-off
+    is judged on replacement actuators, weighted to the test set's mix of fluid grades. IDs and dates decide
+    only which rows are used for this check; they are never inputs to the model."""
+    dates = pd.to_datetime(train["Observation_Date"])
+    first_actuator = train.loc[dates.groupby(train[GROUP]).idxmin()].set_index(GROUP)["Actuator_ID"]
+    like = ~train["Actuator_ID"].eq(train[GROUP].map(first_actuator)).to_numpy()
+    test_mix = test["Hydraulic_Fluid_Grade"].value_counts(normalize=True)
+    train_mix = train.loc[like, "Hydraulic_Fluid_Grade"].value_counts(normalize=True)
+    weights = train["Hydraulic_Fluid_Grade"].map(test_mix / train_mix).fillna(1.0).to_numpy(float)
+    return like, weights
+
+
+def pick_cutoff(y, scores, groups, like, weights, n_boot=300):
+    """The best cut-off on the test-like rows. Cut-offs within 0.001 of that best count as tied, and the tie
+    goes to the one that scores best on all rows. Returns the cut-off, the all-rows best, and both F1 curves."""
+    all_best, all_curve = choose_threshold(y, scores, groups, n_boot=n_boot)
+    _, like_curve = choose_threshold(y[like], scores[:, like], groups[like], n_boot=n_boot, weights=weights[like])
+    top = max(like_curve.values())
+    tied = [cut for cut, f1 in like_curve.items() if f1 >= top - 0.001]
+    return max(tied, key=lambda cut: all_curve[cut]), all_best, all_curve, like_curve
 
 
 # ----------------------------------------------------------------------------
@@ -306,9 +334,12 @@ def main():
     # --- 1. cross-validation on aircraft the model never saw
     print("Cross-validating on unseen aircraft (4 repeats of 5 folds)...")
     scores = out_of_fold(X, y, groups)
-    threshold, curve = choose_threshold(y, scores, groups)
+    like, like_weights = test_like_rows(train, test)
+    threshold, all_rows_cut, curve, like_curve = pick_cutoff(y, scores, groups, like, like_weights)
     per_repeat = [confusion(y, s >= threshold) for s in scores]
     mean = {k: float(np.mean([c[k] for c in per_repeat])) for k in per_repeat[0]}
+    like_repeat = [confusion(y[like], s[like] >= threshold) for s in scores]
+    like_mean = {k: float(np.mean([c[k] for c in like_repeat])) for k in like_repeat[0]}
     spread = float(np.std([c["f1"] for c in per_repeat]))
     ap = float(np.mean([average_precision_score(y, s) for s in scores]))
     auc = float(np.mean([roc_auc_score(y, s) for s in scores]))
@@ -324,7 +355,8 @@ def main():
     # --- 2. one plain train/test split, for a figure that is easy to explain
     held = np.isin(groups, np.random.default_rng(42).permutation(names)[:20])
     split_model = Blend(seeds=(0, 1, 2)).fit(X[~held], y[~held])
-    split_cut, _ = choose_threshold(y[~held], out_of_fold(X[~held], y[~held], groups[~held], repeats=2), groups[~held], n_boot=150)
+    split_scores = out_of_fold(X[~held], y[~held], groups[~held], repeats=2)
+    split_cut = pick_cutoff(y[~held], split_scores, groups[~held], like[~held], like_weights[~held], n_boot=150)[0]
     split = confusion(y[held], split_model.predict_proba(X[held]) >= split_cut)
 
     # --- 3. final model on all 10,000 rows, then the test set
@@ -364,6 +396,7 @@ def main():
         "All scores are on aircraft the model never saw during training.",
         "", "| Check | F1 | Precision | Recall | Accuracy |", "|---|---|---|---|---|",
         f"| Cross-validation, 5 folds x 4 repeats | **{mean['f1']:.3f}** | {mean['precision']:.3f} | {mean['recall']:.3f} | {mean['accuracy']:.3f} |",
+        f"| Same cross-validation, replacement actuators only (the kind in the test set) | {like_mean['f1']:.3f} | {like_mean['precision']:.3f} | {like_mean['recall']:.3f} | {like_mean['accuracy']:.3f} |",
         f"| One split: train on 80 aircraft, test on 20 | {split['f1']:.3f} | {split['precision']:.3f} | {split['recall']:.3f} | {split['accuracy']:.3f} |",
         "",
         f"- F1 varies between repeats by ±{spread:.3f}, and from fleet to fleet between {low:.3f} and {high:.3f} (5th to 95th percentile).",
@@ -371,8 +404,15 @@ def main():
         f"- Per repeat at the chosen cut-off: about {mean['tp']:.0f} failures caught, {mean['fn']:.0f} missed, {mean['fp']:.0f} false alarms, out of {int(y.sum())} Yes rows.",
         f"- The one split: {split['tp']} caught, {split['fn']} missed, {split['fp']} false alarms among {int(held.sum())} rows.",
         "", "## Yes/No cut-off",
-        f"- A row is predicted Yes when its risk is at least **{threshold:.2f}**. This is the cut-off with the best average F1 over 300 resampled fleets.",
-        "- F1 near the cut-off: " + ", ".join(f"{c:.2f} gives {curve[c]:.3f}" for c in sorted(curve) if abs(c - threshold) <= 0.061 and round((c - threshold) * 100) % 2 == 0) + ".",
+        f"- A row is predicted Yes when its risk is at least **{threshold:.2f}**.",
+        "- How it was chosen: every training aircraft starts on an original actuator that was already part-worn, but the "
+        "test set is recorded months later, when nearly every aircraft is on a replacement fitted new. So the cut-off is "
+        "the one with the best average F1 over 300 resampled fleets on replacement actuators, weighted to the test set's "
+        "fluid-grade mix. Cut-offs within 0.001 of the best count as tied, and the tie goes to the one that scores best on all rows.",
+        f"- On all training rows the best cut-off is {all_rows_cut:.2f}. There, {threshold:.2f} scores {curve[threshold]:.3f} "
+        f"against {curve[all_rows_cut]:.3f}, so the choice costs almost nothing on the full data.",
+        "- F1 on replacement actuators near the cut-off: " + ", ".join(f"{c:.2f} gives {like_curve[c]:.3f}" for c in sorted(like_curve) if abs(c - threshold) <= 0.061 and round((c - threshold) * 100) % 2 == 0) + ".",
+        "- F1 on all rows near the cut-off: " + ", ".join(f"{c:.2f} gives {curve[c]:.3f}" for c in sorted(curve) if abs(c - threshold) <= 0.061 and round((c - threshold) * 100) % 2 == 0) + ".",
         "", "## Test set predictions",
         f"- Predicted Yes: **{int((labels == 'Yes').sum())}** of {len(labels):,} ({(labels == 'Yes').mean():.1%}). In training, {y.mean():.1%} of rows are Yes.",
         f"- The model's own estimate of the number of true Yes rows in the test set: about {expected_yes:.0f}.",

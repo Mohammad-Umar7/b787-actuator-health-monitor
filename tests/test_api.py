@@ -183,3 +183,47 @@ def test_uploaded_batches_and_results_survive_a_restart(svc, settings):
     again = Services(settings)
     assert again.batch(batch.id).scored and again.batch(SAMPLE_ID).scored and again.batch(batch.id).name == "kept"
     assert len(again.store.list_proposals(batch_id=batch.id)) == 3 and len(again.batches.all()) == 2
+
+
+def test_only_one_of_many_simultaneous_starts_is_accepted(svc):
+    """Found by stress-testing the running app: two reviews could start on one batch at the same instant."""
+    import threading
+    from acumain.services import RequestError
+    outcomes, barrier = [], threading.Barrier(8)
+
+    def start():
+        barrier.wait()
+        try:
+            outcomes.append(svc.start_run(SAMPLE_ID, "review", list_size=5))
+        except RequestError as err:
+            outcomes.append(err.status)
+
+    threads = [threading.Thread(target=start) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    started = [o for o in outcomes if isinstance(o, str)]
+    assert len(started) == 1 and outcomes.count(409) == 7
+    svc._threads[started[0]].join(timeout=20)
+    assert svc.store.get_run(started[0])["status"] == "completed" and len(svc.store.list_runs()) == 1
+
+
+def test_racing_decisions_create_exactly_one_work_order(svc):
+    import threading
+    svc.start_run(SAMPLE_ID, "review", list_size=3, wait=True)
+    target = svc.store.list_proposals(batch_id=SAMPLE_ID)[0]["id"]
+    barrier = threading.Barrier(10)
+
+    def decide(i):
+        barrier.wait()
+        svc.decide(target, "approved" if i % 2 else "rejected")
+
+    threads = [threading.Thread(target=decide, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    final = svc.store.list_proposals(batch_id=SAMPLE_ID)[0]
+    orders = [o for o in svc.store.list_work_orders() if o["proposal_id"] == target]
+    assert final["status"] in ("approved", "rejected") and len(orders) == (1 if final["status"] == "approved" else 0)

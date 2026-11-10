@@ -112,11 +112,7 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.delete("/api/batches/{batch_id}")
     def remove(batch_id: str):
-        if svc.store.active_run(batch_id):
-            raise RequestError("The assistant is still working on this batch.", 409)
-        if not svc.batches.remove(batch_id):
-            raise RequestError("Only uploaded batches can be removed.", 400)
-        svc.store.clear_batch(batch_id)
+        svc.remove(batch_id)
         return {"removed": batch_id}
 
     @app.post("/api/batches/{batch_id}/reset")

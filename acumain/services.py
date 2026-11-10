@@ -40,6 +40,9 @@ class Services:
         # `claude` can be injected by the tests; otherwise it exists only when a key was configured.
         self.claude = claude if claude is not None else (ClaudeLLM(self.settings) if self.settings.claude_enabled else None)
         self._threads: dict[str, threading.Thread] = {}
+        # Starting a run, resetting a batch and removing a batch must not interleave: each checks that no run is
+        # active and then acts on that, so the check and the act happen under one lock.
+        self._gate = threading.RLock()
 
     # ------------------------------------------------------------------ status
     def agent_status(self) -> dict:
@@ -84,11 +87,20 @@ class Services:
         return self.batches.detail(temp, "manual-check")
 
     def reset(self, batch_id: str) -> None:
-        batch = self.batch(batch_id)
-        if self.store.active_run(batch_id):
-            raise RequestError("The assistant is still working on this batch.", 409)
-        self.batches.clear_results(batch)
-        self.store.clear_batch(batch_id)
+        with self._gate:
+            batch = self.batch(batch_id)
+            if self.store.active_run(batch_id):
+                raise RequestError("The assistant is still working on this batch.", 409)
+            self.batches.clear_results(batch)
+            self.store.clear_batch(batch_id)
+
+    def remove(self, batch_id: str) -> None:
+        with self._gate:
+            if self.store.active_run(batch_id):
+                raise RequestError("The assistant is still working on this batch.", 409)
+            if not self.batches.remove(batch_id):
+                raise RequestError("Only uploaded batches can be removed.", 400)
+            self.store.clear_batch(batch_id)
 
     def proposals_by_record(self, batch_id: str) -> dict:
         """The open or decided proposal for each record, newest first."""
@@ -104,8 +116,6 @@ class Services:
         batch = self.batch(batch_id)
         if kind not in ("review", "question"):
             raise RequestError("kind must be 'review' or 'question'.")
-        if self.store.active_run(batch_id):
-            raise RequestError("The assistant is already working on this batch. Wait for it to finish.", 409)
         question = (question or "").strip()
         if kind == "question" and not question:
             raise RequestError("Type a question first.")
@@ -126,8 +136,13 @@ class Services:
         planner = OfflinePlanner(kind, list_size, selected)
         context = {"kind": kind, "question": question or None, "record_ids": scope, "list_size": list_size, "selected": selected, "screen": screen}
         task = "Prepare the action list" if kind == "review" else question
-        run_id = self.store.create_run(kind, task, batch_id, "claude" if primary else "built-in planner",
-                                       self.settings.model if primary else planner.label, context)
+        with self._gate:
+            if self.store.active_run(batch_id):
+                raise RequestError("The assistant is already working on this batch. Wait for it to finish.", 409)
+            if self.batches.get(batch_id) is None:
+                raise RequestError("That batch does not exist.", 404)
+            run_id = self.store.create_run(kind, task, batch_id, "claude" if primary else "built-in planner",
+                                           self.settings.model if primary else planner.label, context)
         if status["mode"] != "claude" and status["reason"]:
             self.store.note(run_id, status["reason"])
         if kind == "review":

@@ -1,0 +1,47 @@
+# Case 1 (release v2): model report
+
+## Data check
+- Training rows: 10,000. Test rows: 2,000.
+- Duplicate rows: 0 in training, 0 in test. Duplicate test IDs: 0.
+- Aircraft: 100 in training (each with 100 weekly records), 2000 in test (one record each).
+- Target: 797 Yes and 9203 No (8.0% Yes). Other labels: 0.
+- Missing values (the organisers say these are intentional): Ambient_Temperature_C 4.0% train / 4.6% test; Hydraulic_Pressure_PSI 4.2% train / 3.8% test; Pressure_Variation_PSI 3.7% train / 3.4% test; Hydraulic_Fluid_Temperature_C 4.1% train / 4.6% test; Internal_Leakage_Rate_mL_Min 3.9% train / 4.0% test; Actuation_Time_Seconds 4.2% train / 4.5% test.
+- Cleaning: every value is inside its allowed range and every fluid grade is valid, so nothing had to be corrected.
+
+## Model
+- A weighted average of two models: 75% a logistic regression (with squared and pairwise terms) and 25% small gradient-boosted trees (LightGBM) that are not allowed to lower the risk when a wear reading rises.
+- The key step is dividing the raw readings by their reference settings: actuation time by (reference time x load ratio), and leakage by reference flow. The reference settings change at every test.
+- Not used: aircraft ID, actuator ID, date and case ID (the rules forbid them), and actuator age (it adds nothing once the readings are known, and it is distributed differently in the test set).
+- Missing readings: the trees handle them directly; the logistic part uses the training median plus a flag.
+
+## How good is it
+All scores are on aircraft the model never saw during training.
+
+| Check | F1 | Precision | Recall | Accuracy |
+|---|---|---|---|---|
+| Cross-validation, 5 folds x 4 repeats | **0.710** | 0.643 | 0.792 | 0.948 |
+| One split: train on 80 aircraft, test on 20 | 0.683 | 0.633 | 0.743 | 0.943 |
+
+- F1 varies between repeats by ±0.003, and from fleet to fleet between 0.682 and 0.729 (5th to 95th percentile).
+- Ranking quality: average precision 0.754, AUC 0.971.
+- Per repeat at the chosen cut-off: about 631 failures caught, 166 missed, 351 false alarms, out of 797 Yes rows.
+- The one split: 124 caught, 43 missed, 72 false alarms among 2000 rows.
+
+## Yes/No cut-off
+- A row is predicted Yes when its risk is at least **0.29**. This is the cut-off with the best average F1 over 300 resampled fleets.
+- F1 near the cut-off: 0.23 gives 0.692, 0.25 gives 0.698, 0.27 gives 0.705, 0.29 gives 0.709, 0.31 gives 0.708, 0.33 gives 0.706, 0.35 gives 0.702.
+
+## Test set predictions
+- Predicted Yes: **214** of 2,000 (10.7%). In training, 8.0% of rows are Yes.
+- The model's own estimate of the number of true Yes rows in the test set: about 176.
+- F1 the model expects on the test set from its own probabilities: about 0.71.
+- Cross-check of the cut-off: judged only by the test set's own probabilities, the best number to flag would be 192. The training-based cut-off flags 214.
+- File: `submission/case_1_predictions.csv`. Format check: passed every rule.
+
+## What drives the predictions
+- Logistic part, largest standardised weights: log_t_norm +2.07, leak_norm +0.53, sqrt_leak_norm +0.47, pv +0.47, fc +0.44, amb -0.35.
+- Tree part, share of total gain: t_norm 54%, leak_norm 27%, pv 3%, fc 2%, ft 2%, amb 2%.
+
+## Limits
+- Each test row is one snapshot. Readings four weeks before a failure look almost the same as readings six weeks before, so no model can separate them perfectly. Every method we tried stops near the same F1.
+- The test set mixes fluid grades more evenly than training and has younger actuators. The readings themselves are distributed alike, and age is not used, so this should not hurt.

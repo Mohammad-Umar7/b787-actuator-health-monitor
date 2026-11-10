@@ -21,3 +21,7 @@ demo/work/
 
 # The hosted copy of the demo video; the original is demo/demo.mp4
 dashboard/static/demo.mp4
+
+# macOS junk inside the organisers' zip
+__MACOSX/
+.DS_Store

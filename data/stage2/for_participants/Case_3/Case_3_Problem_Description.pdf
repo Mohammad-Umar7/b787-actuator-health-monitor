@@ -1,0 +1,590 @@
+%PDF-1.4
+%‚„œ”
+1 0 obj
+<<
+/Producer (ReportLab PDF Library \055 \050opensource\051)
+/Author (\050anonymous\051)
+/CreationDate (D\07220261110102649\05304\04700\047)
+/Creator (\050unspecified\051)
+/Keywords ()
+/ModDate (D\07220261110102649\05304\04700\047)
+/Subject (\050unspecified\051)
+/Title (Case 3 \055 Problem description \055 v2)
+/Trapped (\057False)
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Count 1
+/Kids [ 4 0 R ]
+>>
+endobj
+3 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+/Outlines 9 0 R
+>>
+endobj
+4 0 obj
+<<
+/Contents 5 0 R
+/MediaBox [ 0 0 595.2756 841.8898 ]
+/Resources <<
+/Font 6 0 R
+/ProcSet [ /ImageB /ImageC /ImageI /PDF /Text ]
+>>
+/Rotate 0
+/Trans <<
+>>
+/Type /Page
+/Parent 2 0 R
+>>
+endobj
+5 0 obj
+[ 12 0 R 13 0 R ]
+endobj
+6 0 obj
+<<
+/F1 7 0 R
+/F1-0 10 0 R
+/F2 8 0 R
+/F2-0 11 0 R
+>>
+endobj
+7 0 obj
+<<
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+/Name /F1
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+8 0 obj
+<<
+/BaseFont /Helvetica-Bold
+/Encoding /WinAnsiEncoding
+/Name /F2
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+9 0 obj
+<<
+>>
+endobj
+10 0 obj
+<<
+/BaseFont /Helvetica
+/Encoding /WinAnsiEncoding
+/Name /F1
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+11 0 obj
+<<
+/BaseFont /Helvetica-Bold
+/Encoding /WinAnsiEncoding
+/Name /F2
+/Subtype /Type1
+/Type /Font
+>>
+endobj
+12 0 obj
+<<
+/Length 4386
+>>
+stream
+q
+1 0 0 1 0 0 cm
+BT
+/F1 12 Tf
+14.4 TL
+ET
+0.796078 0.835294 0.882353 RG
+n
+38 32 m
+557.2756 32 l
+S
+0.321569 0.380392 0.462745 rg
+BT
+/F1 8 Tf
+9.6 TL
+ET
+BT
+1 0 0 1 38 20 Tm
+(Case 3 \174 Release v2 \174 Problem description) Tj
+T*
+ET
+BT
+1 0 0 1 552.8276 20 Tm
+(1) Tj
+T*
+ET
+q
+1 0 0 1 44 783.8898 cm
+q
+0.12549 0.219608 0.392157 rg
+BT
+1 0 0 1 0 5 Tm
+/F2 17 Tf
+22 TL
+(Case 3\072 Identify belt defects and fleet trends) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 750.8898 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 16.8 Tm
+/F1 9.2 Tf
+13 TL
+(The airline has observed increasing belt defects across several aircraft\056 It wants to identify affected aircraft and investigate) Tj
+T*
+(factors associated with the increase\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 728.8898 cm
+q
+0.12549 0.219608 0.392157 rg
+BT
+1 0 0 1 0 4 Tm
+/F2 11 Tf
+15 TL
+(Your task) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 695.8898 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 16.8 Tm
+/F1 9.2 Tf
+13 TL
+(For each screening episode\054 predict whether a defect will be confirmed in the subsequent inspection\056 This is binary) Tj
+T*
+(classification\072 return Yes or No\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 673.8898 cm
+q
+0.12549 0.219608 0.392157 rg
+BT
+1 0 0 1 0 4 Tm
+/F2 11 Tf
+15 TL
+(Data and prediction point) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 627.8898 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 29.8 Tm
+/F1 9.2 Tf
+13 TL
+(Use the current screening measurements and maintenance context together with the supplied 30\055day aircraft duty) Tj
+T*
+(summaries\056 These summaries are input columns in the same row\073 no observation sequences are required\056 Some aircraft) Tj
+T*
+(duty hours may precede installation of the current belt\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 542.8898 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 68.8 Tm
+/F1 9.2 Tf
+13 TL
+(Each row is a separate screening episode\056 Repeated Engine\137ID values do not imply a continuous history of the same) Tj
+T*
+(installed belt\056 The target is the confirmatory inspection result for that episode\054 not a 30\055day failure forecast or a continuous) Tj
+T*
+(numerical prediction\056 Analyze fleet trends using aggregate defect rates over Maintenance\137Date\073 continuous belt\055lifetime) Tj
+T*
+(modeling is not required\056 For scoring\054 construct each test prediction from that row and training\055learned parameters only\056 Do) Tj
+T*
+(not join later test rows to construct earlier prediction features\056 The duty summaries belong to each independently simulated) Tj
+T*
+(scenario\073 repeated aircraft\057engine tags do not define a shared continuous operating history\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 442.3898 cm
+q
+0.12549 0.219608 0.392157 rg
+n
+0 93.5 519.2756 -20.7 re
+f*
+1 1 1 rg
+n
+0 72.8 519.2756 -31.4 re
+f*
+0.94902 0.960784 0.980392 rg
+n
+0 41.4 519.2756 -20.7 re
+f*
+1 1 1 rg
+n
+0 20.7 519.2756 -20.7 re
+f*
+0 0 0 rg
+BT
+/F1 10 Tf
+12 TL
+ET
+q
+1 0 0 1 6 77.8 cm
+q
+1 1 1 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F2 8.1 Tf
+10.7 TL
+(Provided file) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 181 77.8 cm
+q
+1 1 1 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F2 8.1 Tf
+10.7 TL
+(Use) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 6 57.1 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F1 8.1 Tf
+10.7 TL
+(Training Excel workbook) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 181 46.4 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 13.3 Tm
+/F1 8.1 Tf
+10.7 TL
+(10\054000 labeled records and a safe data dictionary\056 Fit preprocessing and select models) Tj
+T*
+(using training data\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 6 25.7 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F1 8.1 Tf
+10.7 TL
+(case\1373\137test\137inputs\056csv) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 181 25.7 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F1 8.1 Tf
+10.7 TL
+(2\054000 unlabeled test records\073 one prediction per identifier\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 6 5 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F1 8.1 Tf
+10.7 TL
+(submission\137guidelines\057) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 181 5 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 2.6 Tm
+/F1 8.1 Tf
+10.7 TL
+(Read the exact CSV requirements and fill the supplied prediction template\056) Tj
+T*
+ET
+Q
+Q
+q
+Q
+Q
+Q
+q
+1 0 0 1 44 435.3898 cm
+Q
+q
+1 0 0 1 44 420.3898 cm
+q
+0.12549 0.219608 0.392157 rg
+BT
+1 0 0 1 0 4 Tm
+/F2 11 Tf
+15 TL
+(Analysis and evaluation) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 387.3898 cm
+q
+0 0 0 rg
+BT
+1 0 0 1 0 16.8 Tm
+/F1 9.2 Tf
+13 TL
+(Find unusual fleet\055level trends\054 identify abnormal measurements\054 investigate possible associations with defects and highlight) Tj
+T*
+(aircraft needing inspection\056 Distinguish association from causal evidence when explaining results\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 358.3898 cm
+q
+0 0 0 rg
+Q
+Q
+q
+1 0 0 1 44 329.3898 cm
+q
+0 0 0 rg
+Q
+Q
+
+Q
+
+endstream
+endobj
+13 0 obj
+<<
+/Length 2567
+>>
+stream
+q
+0.0 0.0 595.2756 841.8898 re
+W
+n
+1 0 0 1 0 0 cm
+BT
+/F1-0 12 Tf
+14.4 TL
+ET
+q
+1 0 0 1 44 364.8898 cm
+q
+0.141176 0.243137 0.380392 rg
+BT
+1 0 0 1 0 4 Tm
+/F2-0 11 Tf
+15 TL
+(Expected output and evaluation) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 332.8898 cm
+q
+BT
+1 0 0 1 0 16.8 Tm
+13 TL
+/F1-0 9.2 Tf
+0.188235 0.211765 0.25098 rg
+(Submit ) Tj
+/F2-0 9.2 Tf
+(case\1373\137predictions\056csv) Tj
+/F1-0 9.2 Tf
+( with exactly 2\054000 prediction records\054 one for every supplied Record\137ID\054 plus one header) Tj
+T*
+(row\056 Copy identifiers exactly\056 Use this exact column order\072) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 314.8898 cm
+q
+0.188235 0.211765 0.25098 rg
+BT
+1 0 0 1 0 3.8 Tm
+/F2-0 9.2 Tf
+13 TL
+(Record\137ID\054Defect\137Found) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 281.8898 cm
+q
+BT
+1 0 0 1 0 16.8 Tm
+-0.026244 Tw
+13 TL
+/F2-0 9.2 Tf
+0.188235 0.211765 0.25098 rg
+(Defect\137Found\072) Tj
+/F1-0 9.2 Tf
+( exactly Yes or No\056 Yes means a defect is confirmed in the subsequent inspection for that screening episode\056) Tj
+T*
+0 Tw
+(Submit labels\054 not probabilities or numerical risk scores\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 235.8898 cm
+q
+BT
+1 0 0 1 0 29.8 Tm
+13 TL
+/F2-0 9.2 Tf
+0.188235 0.211765 0.25098 rg
+(Ranking metric\072 positive\055class F1\054 with Defect\137Found\075Yes as the positive class\056) Tj
+/F1-0 9.2 Tf
+( Score \075 100 x F1 \075 100 x 2TP \057 \0502TP) Tj
+T*
+(\053 FP \053 FN\051\054 on a 0\055100 scale\056 TP \075 correctly predicted Yes\073 FP \075 predicted Yes for an actual No\073 FN \075 predicted No for an) Tj
+T*
+(actual Yes\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 202.8898 cm
+q
+0.188235 0.211765 0.25098 rg
+BT
+1 0 0 1 0 16.8 Tm
+/F1-0 9.2 Tf
+13 TL
+(Predicting No for every row receives zero F1\056 Binary accuracy\054 precision and recall are also reported\073 they do not determine) Tj
+T*
+(ranking\056 Identical F1 scores are tied\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 156.8898 cm
+q
+0.188235 0.211765 0.25098 rg
+BT
+1 0 0 1 0 29.8 Tm
+/F1-0 9.2 Tf
+13 TL
+(Read the submission guidelines and fill the supplied template\056 All records must pass the exact format and completeness) Tj
+T*
+(checks before scoring\056 Do not add an index or extra columns\056 Keep any separately requested demonstration or explanation) Tj
+T*
+(outside the prediction CSV\056) Tj
+T*
+ET
+Q
+Q
+q
+1 0 0 1 44 127.8898 cm
+q
+0.188235 0.211765 0.25098 rg
+BT
+1 0 0 1 0 13.7 Tm
+/F1-0 8.3 Tf
+11 TL
+(Use release v2 files and templates together\056 All records and identifiers are synthetic\056 Numerical ranges are illustrative educational) Tj
+T*
+(assumptions\054 not certified aircraft maintenance limits\056) Tj
+T*
+ET
+Q
+Q
+Q
+
+endstream
+endobj
+xref
+0 14
+0000000000 65535 f 
+0000000015 00000 n 
+0000000366 00000 n 
+0000000425 00000 n 
+0000000490 00000 n 
+0000000689 00000 n 
+0000000722 00000 n 
+0000000789 00000 n 
+0000000896 00000 n 
+0000001008 00000 n 
+0000001029 00000 n 
+0000001137 00000 n 
+0000001250 00000 n 
+0000005689 00000 n 
+trailer
+<<
+/Size 14
+/Root 3 0 R
+/Info 1 0 R
+>>
+startxref
+8309
+%%EOF

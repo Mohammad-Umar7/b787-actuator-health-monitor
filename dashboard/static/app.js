@@ -33,6 +33,68 @@ function icon(level) {
 const badge = (level) => `<span class="badge ${cls(level)}">${icon(level)}${level}</span>`;
 const condition = (level) => `<span class="cond"><span class="swatch step-${level}"></span>${LEVEL_NAMES[level]}</span>`;
 
+// ---------------------------------------------------------------- reasons in plain words
+const OP_PHRASE = [null, "operation starting to slow", "slow operation"];
+const LEAK_PHRASE = [null, "leakage starting to rise", "high leakage", "very high leakage"];
+const OP_MEANING = [
+  "The actuator moves the landing gear in normal time.",
+  "The actuator has started to take longer than normal to move the landing gear.",
+  "The actuator is taking much longer than normal to move the landing gear. In the data, this is the strongest warning sign of a failure.",
+];
+const LEAK_MEANING = [
+  "Hydraulic leakage is normal.",
+  "Hydraulic leakage has started to rise above normal.",
+  "Hydraulic fluid is leaking well above normal.",
+  "Hydraulic leakage is at the worst level recorded.",
+];
+const DECISION_WHY = {
+  High: "More likely than not to fail within 30 days. Schedule the repair now to avoid an unplanned grounding.",
+  Medium: "Not expected to fail this month, but the readings are moving towards failure. Plan an inspection before they get worse.",
+  Low: "No warning sign is strong enough to act on yet.",
+};
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+// The short reason shown in the table. Operation time comes first because it carries most of the risk.
+function reasonShort(r) {
+  const parts = [OP_PHRASE[r.op], LEAK_PHRASE[r.leak]].filter(Boolean);
+  return parts.length ? cap(parts.join(" and ")) : "All readings normal";
+}
+
+// How often records like this one were followed by a failure, when the data has the answers.
+function pastOutcomes(match) {
+  const known = state.data.records.filter((x) => x.actual != null && match(x));
+  return { n: known.length, failed: known.filter((x) => x.actual).length };
+}
+function evidence(stat, what) {
+  if (!state.data.has_answers) return "";
+  if (!stat.n) return `No record in the data had ${what}, so this part is the model's estimate.`;
+  if (stat.n === 1) return `In the data, the only record with ${what} ${stat.failed ? "was" : "was not"} followed by a failure within 30 days.`;
+  return `In the data, ${stat.failed} of ${stat.n} records with ${what} were followed by a failure within 30 days.`;
+}
+
+function changeSince(r) {
+  const prev = state.data.records
+    .filter((x) => x.id === r.id && x.order < r.order)
+    .sort((a, b) => b.order - a.order)[0];
+  if (!prev) return "This is the first record for this aircraft.";
+  const move = (name, from, to) => (from === to ? null
+    : `${name} ${to > from ? "rose" : "fell"} from ${LEVEL_NAMES[from]} to ${LEVEL_NAMES[to]}`);
+  const moves = [move("leakage", prev.leak, r.leak), move("operation time", prev.op, r.op)].filter(Boolean);
+  const when = prev.month ? `Since ${esc(prev.month)}` : "Since the previous record";
+  const what = moves.length ? `${moves.join(", and ")}.` : "no change in the readings.";
+  const risk = fmtRisk(prev.risk) === fmtRisk(r.risk)
+    ? `Risk stayed at ${fmtRisk(r.risk)}.` : `Risk went from ${fmtRisk(prev.risk)} to ${fmtRisk(r.risk)}.`;
+  return `${when}: ${what} ${risk}`;
+}
+
+// The reason a group of aircraft shares: their mildest readings, with "or worse" when some go further.
+function sharedReason(rows) {
+  const floor = { op: Math.min(...rows.map((r) => r.op)), leak: Math.min(...rows.map((r) => r.leak)) };
+  const worse = rows.some((r) => r.op > floor.op || r.leak > floor.leak) ? " or worse" : "";
+  const who = rows.length === 1 ? "it shows" : `all ${rows.length} show`;
+  return `${who} ${esc(reasonShort(floor).toLowerCase())}${worse}`;
+}
+
 // ---------------------------------------------------------------- data
 // The fleet as of the chosen month: each aircraft's latest record up to that month, ranked by risk.
 function fleetAt(asOf) {
@@ -112,14 +174,16 @@ function renderAlert(list) {
     const expected = high.reduce((sum, r) => sum + r.risk / 100, 0);
     kind = "is-critical";
     glyph = icon("High");
-    body = `<p><strong>${high.length} aircraft ${verb(high.length)} High risk. Without action, about ${Math.max(1, Math.round(expected))} of them will fail within 30 days.</strong> ${names(high)}</p>`;
+    body = `<p><strong>${high.length} aircraft ${verb(high.length)} High risk. Without action, about ${Math.max(1, Math.round(expected))} of them will fail within 30 days.</strong> ${names(high)}</p>
+      <p>Why: ${sharedReason(high)}, the pattern seen before failures in the data.</p>`;
     if (medium.length) {
       body += `<p>${medium.length} aircraft ${verb(medium.length)} Medium risk and should have an inspection planned: ${names(medium)}</p>`;
     }
   } else if (medium.length) {
     kind = "is-warning";
     glyph = icon("Medium");
-    body = `<p><strong>${medium.length} aircraft ${verb(medium.length)} Medium risk.</strong> Plan an inspection: ${names(medium)}</p>`;
+    body = `<p><strong>${medium.length} aircraft ${verb(medium.length)} Medium risk.</strong> Plan an inspection: ${names(medium)}</p>
+      <p>Why: ${sharedReason(medium)}. Not expected to fail this month, but moving towards failure.</p>`;
   }
   $("#alert").innerHTML = `<div class="alert ${kind}" role="status">${glyph}<div>${body}</div></div>`;
 }
@@ -228,8 +292,9 @@ function renderFleet(list, visible) {
     return `<tr tabindex="0" data-select="${esc(r.id)}" aria-selected="${r.id === state.selected}">
       <td class="rank">${r.rank}</td>
       <td><span class="ac-id">${esc(r.id)}</span>${flag}<span class="ac-sub ${r.stale ? "stale" : ""}">${record}</span></td>
-      <td>${condition(r.leak)}</td>
-      <td>${condition(r.op)}</td>
+      <td class="why"><span class="why-text">${esc(reasonShort(r))}</span>
+        <span class="why-readings"><span class="cond"><span class="swatch step-${r.leak}"></span>Leakage ${LEVEL_NAMES[r.leak]}</span>
+          <span class="cond"><span class="swatch step-${r.op}"></span>Operation ${LEVEL_NAMES[r.op]}</span></span></td>
       <td><div class="risk-cell" data-tip="${esc(r.id)}|Risk ${fmtRisk(r.risk)}|Likely range ${fmtRange(r)}">
         <span class="risk-num">${fmtRisk(r.risk)}</span>
         <div class="meter ${cls(r.level)}"><div class="meter-fill" style="width:${r.risk}%"></div></div>
@@ -245,7 +310,7 @@ function renderFleet(list, visible) {
     <div class="card-head"><h2>Fleet priorities</h2><span class="hint">${hint}</span></div>
     <div class="table-wrap"><table>
       <thead><tr>
-        <th>#</th>${head("id", "Aircraft")}${head("leak", "Leakage")}${head("op", "Operation time")}
+        <th>#</th>${head("id", "Aircraft")}<th>Why</th>
         ${head("risk", "Risk, next 30 days")}<th>Level and decision</th>${hasAnswers ? "<th>Recorded outcome</th>" : ""}
       </tr></thead>
       <tbody>${sorted(visible).map(row).join("")}</tbody>
@@ -315,8 +380,21 @@ function renderDetail(list) {
   const t = state.data.thresholds;
   const record = r.month == null ? ""
     : r.stale ? `Last record: ${esc(r.month)}. No record for ${esc(monthLabel(state.month))}.` : `Record: ${esc(r.month)}`;
+  const both = pastOutcomes((x) => x.leak === r.leak && x.op === r.op);
+  const watch = r.level !== "Low" ? ""
+    : r.leak > 0 || r.op > 0 ? " The readings have started to rise, so keep watching this aircraft." : " Keep monitoring.";
+  const why = `
+    <p class="why-head"><b>${esc(reasonShort(r))}.</b> ${DECISION_WHY[r.level]}${watch}
+      <span class="evidence">${evidence(both, "this same leakage and operation time")}</span></p>
+    <ul class="why-list">
+      <li><b>Operation time ${LEVEL_NAMES[r.op]}.</b> ${OP_MEANING[r.op]}
+        <span class="evidence">${evidence(pastOutcomes((x) => x.op === r.op), `operation time ${LEVEL_NAMES[r.op]}`)}</span></li>
+      <li><b>Leakage ${LEVEL_NAMES[r.leak]}.</b> ${LEAK_MEANING[r.leak]}
+        <span class="evidence">${evidence(pastOutcomes((x) => x.leak === r.leak), `leakage ${LEVEL_NAMES[r.leak]}`)}</span></li>
+    </ul>
+    <p class="change">${changeSince(r)}</p>`;
   const factors = r.factors.length
-    ? `<div class="factors">${r.factors.map((f) => `
+    ? `<h4 class="sub-head">How much each reading adds to the risk</h4><div class="factors">${r.factors.map((f) => `
         <div class="factor" data-tip="${esc(f.factor)}|${Math.round(f.share * 100)}% of the added risk">
           <span class="name">${esc(f.factor)}</span>
           <span class="barwrap"><span class="bar" style="display:block;width:${f.share * 100}%"></span></span>
@@ -345,7 +423,7 @@ function renderDetail(list) {
           <span style="left:${t.high}%">High from ${fmtThreshold(t.high)}</span></div>
       </div>
     </div>
-    <div class="section"><h3>Why this risk</h3>${factors}</div>
+    <div class="section"><h3>Why this risk</h3>${why}${factors}</div>
     <div class="section"><h3>Readings${r.month ? ` in ${esc(r.month)}` : ""}</h3>
       <dl class="readings">
         ${reading("Leakage", condition(r.leak))}

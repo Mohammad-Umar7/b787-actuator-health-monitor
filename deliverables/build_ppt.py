@@ -1,11 +1,10 @@
 """Fill in the organisers' submission template.
 
-  python deliverables/build_ppt.py --group 7
+  python deliverables/build_ppt.py
 
-Needs python-pptx. Writes "deliverables/Group <n> - Al Ain University.pptx".
+Needs python-pptx. Writes "deliverables/Team Maze - Al Ain University.pptx".
 Edit the text in CONTENT below, then run it again.
 """
-import argparse
 import copy
 from pathlib import Path
 
@@ -21,7 +20,7 @@ LIVE = "acumain.vercel.app"
 CONTENT = {
     "project": "AcuMain",
     "project_line": "AcuMain: Actuator Health Monitor",
-    "group_name": "AAU ENGINEERS TEAM",
+    "team": "Team Maze",
     "university": "AL AIN UNIVERSITY",
     "members": "Mohammad Umar   ·   Farooq Shafeek   ·   Abdulahad   ·   Sadiq   ·   Zubair",
     "challenge": "Case 1: predict which B787 nose landing gear actuators will fail in the next 30 days, "
@@ -115,14 +114,14 @@ def clone_rows(slide, box_name, text_name, lines, top, pitch, box_height, size):
         set_text(row_text, line, size=size)
 
 
-def build(group: str) -> Path:
+def build() -> Path:
     c = CONTENT
     prs = Presentation(TEMPLATE)
     s1, s2, s3, s4, s5 = (prs.slides[i] for i in range(5))
 
     # 1. title
     set_text(find(s1, "Project title"), c["project"])
-    set_text(find(s1, "Group"), f"GROUP {group}  ·  {c['group_name']}")
+    set_text(find(s1, "Group"), c["team"].upper())
     set_text(find(s1, "University"), c["university"])
     remove(find(s1, "File note"))
 
@@ -181,12 +180,10 @@ def build(group: str) -> Path:
     place(find(s5, "Potential future impact field text"), top=6.02, height=0.91)
     set_text(find(s5, "Potential future impact field text"), c["future"], size=11)
 
-    out = ROOT / "deliverables" / f"Group {group} - Al Ain University.pptx"
+    out = ROOT / "deliverables" / f"{c['team']} - Al Ain University.pptx"
     prs.save(out)
     return out
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--group", default="NUMBER", help="your group number")
-    print(build(parser.parse_args().group))
+    print(build())

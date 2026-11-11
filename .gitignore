@@ -40,3 +40,7 @@ deliverables/day2/demo-recorded.*
 # Lock files that an open deck leaves behind, and a temporary copy of the deck
 ~$*
 deliverables/day2/*(new design).pptx
+
+# The team list with student numbers, read by deliverables/day2/build_deck.py
+deliverables/day2/team.json
+deliverables/day2/*(final).pptx

@@ -1,0 +1,23 @@
+An actuator that fails without warning grounds an aircraft. AcuMain gives the maintenance planner a reviewed action list before that happens.
+
+The planner brings in diagnostic records. Here it is the organisers' test file: 2,000 actuator records.
+
+A team of agents takes over. The orchestrator hands the records to the Risk agent, which calls our trained Stage 2 failure model. The 25 most urgent aircraft move onto this week's list. The Stock agent takes spare actuators from the hangar store, and the Supply agent requests the missing ones. Stock and supply are simulated.
+
+The result: 203 of 2,000 actuators are likely to fail within 30 days. Each repair comes with its reason and its spare part, and some parts would arrive too late.
+
+Open any aircraft to see why. The hologram shows its nose landing gear actuator, drawn from this aircraft's own readings: fluid leaking at the seal, and the gear swinging slower than a new actuator.
+
+Nothing happens until a person decides. The planner sees the risk, the reason and the spare part. Approve creates a simulated work order. Reject asks: are you sure? And any decision can be changed later.
+
+A blank reading is not hidden. With the leakage reading blank, the aircraft is still predicted, and marked as reduced confidence.
+
+With both key readings blank, there is no prediction: the team proposes a repeat test.
+
+If the failure model does not answer, the review stops. Nothing is proposed, and nothing is invented.
+
+Once the model is back, the planner tries again, and the review completes.
+
+Every decision and every tool call is kept in the activity log, with its exact input and output. A work order exists only after an approval.
+
+On aircraft it never saw, the model flagged 185 of 187 failures, typically 5 weeks ahead. AcuMain runs from one Docker command.

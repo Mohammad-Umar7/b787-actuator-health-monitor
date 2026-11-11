@@ -1,0 +1,167 @@
+1
+00:00:00,208 --> 00:00:03,549
+An actuator that fails without warning grounds an aircraft.
+
+2
+00:00:03,549 --> 00:00:05,644
+AcuMain gives the maintenance planner
+
+3
+00:00:05,644 --> 00:00:08,080
+a reviewed action list before that happens.
+
+4
+00:00:08,742 --> 00:00:11,426
+The planner brings in diagnostic records.
+
+5
+00:00:11,426 --> 00:00:13,849
+Here it is the organisers' test file:
+
+6
+00:00:13,849 --> 00:00:15,355
+2,000 actuator records.
+
+7
+00:00:16,526 --> 00:00:18,258
+A team of agents takes over.
+
+8
+00:00:18,258 --> 00:00:21,537
+The orchestrator hands the records to the Risk agent,
+
+9
+00:00:21,537 --> 00:00:24,383
+which calls our trained Stage 2 failure model.
+
+10
+00:00:24,383 --> 00:00:27,785
+The 25 most urgent aircraft move onto this week's list.
+
+11
+00:00:27,785 --> 00:00:31,497
+The Stock agent takes spare actuators from the hangar store,
+
+12
+00:00:31,497 --> 00:00:34,405
+and the Supply agent requests the missing ones.
+
+13
+00:00:34,405 --> 00:00:36,323
+Stock and supply are simulated.
+
+14
+00:00:38,298 --> 00:00:40,639
+The result: 203 of 2,000 actuators
+
+15
+00:00:40,639 --> 00:00:42,980
+are likely to fail within 30 days.
+
+16
+00:00:42,980 --> 00:00:46,630
+Each repair comes with its reason and its spare part,
+
+17
+00:00:46,630 --> 00:00:49,178
+and some parts would arrive too late.
+
+18
+00:00:49,512 --> 00:00:51,304
+Open any aircraft to see why.
+
+19
+00:00:51,304 --> 00:00:54,394
+The hologram shows its nose landing gear actuator,
+
+20
+00:00:54,394 --> 00:00:56,866
+drawn from this aircraft's own readings:
+
+21
+00:00:56,866 --> 00:00:58,472
+fluid leaking at the seal,
+
+22
+00:00:58,472 --> 00:01:01,501
+and the gear swinging slower than a new actuator.
+
+23
+00:01:02,544 --> 00:01:05,056
+Nothing happens until a person decides.
+
+24
+00:01:05,056 --> 00:01:08,729
+The planner sees the risk, the reason and the spare part.
+
+25
+00:01:08,729 --> 00:01:11,241
+Approve creates a simulated work order.
+
+26
+00:01:11,241 --> 00:01:12,916
+Reject asks: are you sure?
+
+27
+00:01:12,916 --> 00:01:15,365
+And any decision can be changed later.
+
+28
+00:01:16,231 --> 00:01:17,989
+A blank reading is not hidden.
+
+29
+00:01:17,989 --> 00:01:21,741
+With the leakage reading blank, the aircraft is still predicted,
+
+30
+00:01:21,741 --> 00:01:23,676
+and marked as reduced confidence.
+
+31
+00:01:27,308 --> 00:01:30,473
+With both key readings blank, there is no prediction:
+
+32
+00:01:30,473 --> 00:01:32,385
+the team proposes a repeat test.
+
+33
+00:01:32,910 --> 00:01:36,160
+If the failure model does not answer, the review stops.
+
+34
+00:01:36,160 --> 00:01:38,819
+Nothing is proposed, and nothing is invented.
+
+35
+00:01:42,562 --> 00:01:45,002
+Once the model is back, the planner tries again,
+
+36
+00:01:45,002 --> 00:01:46,274
+and the review completes.
+
+37
+00:01:50,534 --> 00:01:54,585
+Every decision and every tool call is kept in the activity log,
+
+38
+00:01:54,585 --> 00:01:56,643
+with its exact input and output.
+
+39
+00:01:56,643 --> 00:01:59,409
+A work order exists only after an approval.
+
+40
+00:02:00,250 --> 00:02:03,904
+On aircraft it never saw, the model flagged
+
+41
+00:02:03,904 --> 00:02:07,729
+185 of 187 failures, typically 5 weeks ahead.
+
+42
+00:02:07,729 --> 00:02:10,874
+AcuMain runs from one Docker command.

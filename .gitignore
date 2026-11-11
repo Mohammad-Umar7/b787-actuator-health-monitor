@@ -32,3 +32,7 @@ __MACOSX/
 .DS_Store
 # The built public replay copy (made by public_replay/build.py; it holds recorded data and the Vercel link)
 public_replay/site/
+
+# Renders of the Day 2 deck (made by deliverables/day2/render.ps1) and a superseded cut of the demo video
+deliverables/day2/rendered/
+deliverables/day2/demo-recorded.*

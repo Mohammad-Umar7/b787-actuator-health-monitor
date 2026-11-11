@@ -1,0 +1,133 @@
+{
+ "voice": "af_heart",
+ "speed": 1.06,
+ "note": "cues = the subtitle lines, in order. say = the same words spelled the way the voice should pronounce them (numbers, and Acumain as one word). caption = the short label that stays on screen for the scene, for viewers with the sound off.",
+ "beats": [
+  {
+   "id": "b1",
+   "caption": "",
+   "cues": [
+    "An actuator that fails without warning grounds an aircraft.",
+    "AcuMain gives the maintenance planner",
+    "a reviewed action list before that happens."
+   ],
+   "say": "An actuator that fails without warning grounds an aircraft. Acumain gives the maintenance planner a reviewed action list before that happens."
+  },
+  {
+   "id": "b2",
+   "caption": "1 · Bring in the records",
+   "cues": [
+    "The planner brings in diagnostic records.",
+    "Here it is the organisers' test file:",
+    "2,000 actuator records."
+   ],
+   "say": "The planner brings in diagnostic records. Here it is the organisers' test file: two thousand actuator records."
+  },
+  {
+   "id": "b3",
+   "caption": "2 · A team of agents reviews them",
+   "cues": [
+    "A team of agents takes over.",
+    "The orchestrator hands the records to the Risk agent,",
+    "which calls our trained Stage 2 failure model.",
+    "The 25 most urgent aircraft move onto this week's list.",
+    "The Stock agent takes spare actuators from the hangar store,",
+    "and the Supply agent requests the missing ones.",
+    "Stock and supply are simulated."
+   ],
+   "say": "A team of agents takes over. The orchestrator hands the records to the Risk agent, which calls our trained Stage two failure model. The twenty-five most urgent aircraft move onto this week's list. The Stock agent takes spare actuators from the hangar store, and the Supply agent requests the missing ones. Stock and supply are simulated."
+  },
+  {
+   "id": "b4",
+   "caption": "3 · The action list, with reasons and spare parts",
+   "cues": [
+    "The result: 203 of 2,000 actuators",
+    "are likely to fail within 30 days.",
+    "Each repair comes with its reason and its spare part,",
+    "and some parts would arrive too late."
+   ],
+   "say": "The result: two hundred and three of two thousand actuators are likely to fail within thirty days. Each repair comes with its reason and its spare part, and some parts would arrive too late."
+  },
+  {
+   "id": "b5",
+   "caption": "4 · See the actuator itself",
+   "cues": [
+    "Open any aircraft to see why.",
+    "The hologram shows its nose landing gear actuator,",
+    "drawn from this aircraft's own readings:",
+    "fluid leaking at the seal,",
+    "and the gear swinging slower than a new actuator."
+   ],
+   "say": "Open any aircraft to see why. The hologram shows its nose landing gear actuator, drawn from this aircraft's own readings: fluid leaking at the seal, and the gear swinging slower than a new actuator."
+  },
+  {
+   "id": "b6",
+   "caption": "5 · A person decides",
+   "cues": [
+    "Nothing happens until a person decides.",
+    "The planner sees the risk, the reason and the spare part.",
+    "Approve creates a simulated work order.",
+    "Reject asks: are you sure?",
+    "And any decision can be changed later."
+   ],
+   "say": "Nothing happens until a person decides. The planner sees the risk, the reason and the spare part. Approve creates a simulated work order. Reject asks: are you sure? And any decision can be changed later."
+  },
+  {
+   "id": "b7",
+   "caption": "6 · A blank reading is not hidden",
+   "cues": [
+    "A blank reading is not hidden.",
+    "With the leakage reading blank, the aircraft is still predicted,",
+    "and marked as reduced confidence."
+   ],
+   "say": "A blank reading is not hidden. With the leakage reading blank, the aircraft is still predicted, and marked as reduced confidence."
+  },
+  {
+   "id": "b7b",
+   "caption": "6 · A blank reading is not hidden",
+   "cues": [
+    "With both key readings blank, there is no prediction:",
+    "the team proposes a repeat test."
+   ],
+   "say": "With both key readings blank, there is no prediction: the team proposes a repeat test."
+  },
+  {
+   "id": "b8",
+   "caption": "7 · If the model fails: nothing invented, try again",
+   "cues": [
+    "If the failure model does not answer, the review stops.",
+    "Nothing is proposed, and nothing is invented."
+   ],
+   "say": "If the failure model does not answer, the review stops. Nothing is proposed, and nothing is invented."
+  },
+  {
+   "id": "b8b",
+   "caption": "7 · If the model fails: nothing invented, try again",
+   "cues": [
+    "Once the model is back, the planner tries again,",
+    "and the review completes."
+   ],
+   "say": "Once the model is back, the planner tries again, and the review completes."
+  },
+  {
+   "id": "b9",
+   "caption": "8 · Every step is on record",
+   "cues": [
+    "Every decision and every tool call is kept in the activity log,",
+    "with its exact input and output.",
+    "A work order exists only after an approval."
+   ],
+   "say": "Every decision and every tool call is kept in the activity log, with its exact input and output. A work order exists only after an approval."
+  },
+  {
+   "id": "b10",
+   "caption": "",
+   "cues": [
+    "On aircraft it never saw, the model flagged",
+    "185 of 187 failures, typically 5 weeks ahead.",
+    "AcuMain runs from one Docker command."
+   ],
+   "say": "On aircraft it never saw, the model flagged one hundred and eighty-five of one hundred and eighty-seven failures, typically five weeks ahead. Acumain runs from one Docker command."
+  }
+ ]
+}

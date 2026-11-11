@@ -75,10 +75,12 @@ def test_list_and_get_record(svc):
     top = page["records"][0]["record_id"]
     detail, _ = call("get_record", {"record_id": top}, ctx)
     assert detail["prediction"] == "Yes" and detail["history_of_similar_records"] and "failed within 30 days" in detail["records_at_this_risk"]
+    assert detail["do_by"] == "This week" and detail["planner_steps_for_suggested_action"][0] == "Book a hangar slot this week."
     missing, is_error = call("get_record", {"record_id": "NOPE"}, ctx)
     assert is_error and "No record 'NOPE'" in missing["error"]
     no_prediction, _ = call("get_record", {"record_id": unscored["records"][0]["record_id"]}, ctx)
     assert "not scored" in no_prediction["model_result"] and "risk_percent" not in no_prediction
+    assert no_prediction["planner_steps_for_suggested_action"][0].startswith("Repeat the diagnostic test")
 
 
 def test_propose_actions_checks_every_item(svc):

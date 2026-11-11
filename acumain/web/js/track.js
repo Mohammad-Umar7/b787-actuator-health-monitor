@@ -1,7 +1,7 @@
-// Track record: how the model did on aircraft it never saw, and a week-by-week replay against what happened.
+// Model track record: how the failure model did on aircraft it never saw, and a week-by-week replay against what happened.
 import { api } from "./api.js";
 import { state } from "./main.js";
-import { $, LEVEL_CLASS, esc, fmtDate, fmtInt, fmtRisk, icon, levelPill, riskBar } from "./ui.js";
+import { $, LEVEL_CLASS, esc, fmtDate, fmtInt, fmtRisk, icon, levelMark, riskBar, subnav } from "./ui.js";
 
 const OUTCOME_WEEKS = 5;      // a record's 30-day outcome is inside the data only if this many later weeks exist
 const OP = [null, "operation starting to slow", "slow operation", "very slow operation"];
@@ -39,43 +39,48 @@ export async function show() {
   }
   const v = state.meta.validation;
   const tr = state.meta.training;
-  const stat = (label, value, sub, tone = "plain") => `<div class="kpi kpi-${tone}"><span class="kpi-label">${label}</span><span class="kpi-value">${value}</span><span class="kpi-sub">${sub}</span></div>`;
+  const fig = (value, label, note, tone = "") => `<div class="fig ${tone}"><b>${value}</b><span>${label}</span><small>${note}</small></div>`;
   $("#page").innerHTML = `
-    <section class="kpis">
-      ${stat("Failures flagged in time", `${v.caught} of ${v.failures}`, "Flagged at least once in their final 30 days", "low")}
-      ${stat("Typical first warning", `${v.lead_weeks} weeks`, "Before the actuator's last record")}
-      ${stat("F1 score", v.f1, `Precision ${v.precision}%, recall ${v.recall}%`)}
-      ${stat("Accuracy", `${v.accuracy}%`, `AUC ${v.auc}`)}
-      ${stat("False alarms that were early", `${v.false_alarms_early}%`, "Failed within 12 weeks anyway")}
-    </section>
-    <div class="split split-even">
-      <section class="card">
-        <div class="card-head"><div><h2>What a risk level has meant</h2><p>From past records whose next three months are known.</p></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Risk</th><th>Level</th><th>Failed within 30 days</th><th>Failed within 12 weeks</th><th>Records</th></tr></thead>
-          <tbody>${state.meta.timeframe.map((b) => { const level = b.from >= state.meta.thresholds.high ? "High" : b.from >= state.meta.thresholds.medium ? "Medium" : "Low"; return `<tr>
-            <td><b>${b.from}% to ${Math.min(b.to, 100)}%</b></td><td>${levelPill(level)}</td>
-            <td><span class="share"><i class="bar-${LEVEL_CLASS[level]}" style="width:${b.in_30_days}%"></i></span>${b.in_30_days}%</td>
-            <td><span class="share"><i class="bar-${LEVEL_CLASS[level]}" style="width:${b.in_12_weeks}%"></i></span>${b.in_12_weeks}%</td><td>${fmtInt(b.n)}</td></tr>`; }).join("")}</tbody></table></div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div><h2>How it was checked</h2><p>The numbers on this page are not training scores.</p></div></div>
-        <ul class="method">
-          <li>${icon("database")}<span><b>Data.</b> ${fmtInt(tr.rows)} weekly records from ${fmtInt(tr.aircraft)} aircraft and ${fmtInt(tr.actuators)} actuators, ${esc(fmtDate(tr.from))} to ${esc(fmtDate(tr.to))}. ${fmtInt(tr.yes_rows)} are a Yes.</span></li>
-          <li>${icon("shield")}<span><b>Unseen aircraft.</b> ${esc(v.method)}. Every risk in the replay below comes from a model that never saw that aircraft.</span></li>
-          <li>${icon("cpu")}<span><b>Decision line.</b> A record is a Yes from ${state.meta.thresholds.high}% risk, chosen on replacement actuators, the kind the test set contains.</span></li>
-          <li>${icon("alert")}<span><b>Limits.</b> One record at a time, no history: four and six weeks before a failure look alike, so about one Yes in three is early. The data is synthetic and for this hackathon only.</span></li>
-        </ul>
-      </section>
-    </div>
-    <section class="card" id="replay"></section>`;
+    <div class="wrap wrap-wide">
+      ${subnav("model")}
+      <h1 class="display display-sm">How far the failure model can be trusted</h1>
+      <p class="lede">Checked on ${fmtInt(tr.aircraft)} aircraft it never saw in training, then replayed week by week against what the data recorded next.</p>
+      <div class="figures figures-5">
+        ${fig(`${v.caught} of ${v.failures}`, "Failures flagged in time", "At least once in their final 30 days", "fig-ok")}
+        ${fig(`${v.lead_weeks} weeks`, "Typical first warning", "Before the actuator's last record")}
+        ${fig(v.f1, "F1 score", `Precision ${v.precision}%, recall ${v.recall}%`)}
+        ${fig(`${v.accuracy}%`, "Accuracy", `AUC ${v.auc}`)}
+        ${fig(`${v.false_alarms_early}%`, "False alarms that were early", "Failed within 12 weeks anyway")}
+      </div>
+      <div class="two">
+        <section class="sec">
+          <header class="sec-head"><div><h2>What a risk level has meant</h2><p>From past records whose next three months are known.</p></div></header>
+          <div class="table-wrap"><table><thead><tr><th>Risk</th><th>Level</th><th>Failed within 30 days</th><th>Failed within 12 weeks</th><th>Records</th></tr></thead>
+            <tbody>${state.meta.timeframe.map((b) => { const level = b.from >= state.meta.thresholds.high ? "High" : b.from >= state.meta.thresholds.medium ? "Medium" : "Low"; return `<tr>
+              <td><b>${b.from}% to ${Math.min(b.to, 100)}%</b></td><td>${levelMark(level)}</td>
+              <td><span class="share share-${LEVEL_CLASS[level]}"><i style="width:${b.in_30_days}%"></i></span>${b.in_30_days}%</td>
+              <td><span class="share share-${LEVEL_CLASS[level]}"><i style="width:${b.in_12_weeks}%"></i></span>${b.in_12_weeks}%</td><td>${fmtInt(b.n)}</td></tr>`; }).join("")}</tbody></table></div>
+        </section>
+        <section class="sec">
+          <header class="sec-head"><div><h2>How it was checked</h2><p>The numbers on this page are not training scores.</p></div></header>
+          <ul class="method">
+            <li><b>Data.</b> ${fmtInt(tr.rows)} weekly records from ${fmtInt(tr.aircraft)} aircraft and ${fmtInt(tr.actuators)} actuators, ${esc(fmtDate(tr.from))} to ${esc(fmtDate(tr.to))}. ${fmtInt(tr.yes_rows)} are a Yes.</li>
+            <li><b>Unseen aircraft.</b> ${esc(v.method)}. Every risk in the replay below comes from a model that never saw that aircraft.</li>
+            <li><b>Decision line.</b> A record is a Yes from ${state.meta.thresholds.high}% risk, chosen on replacement actuators, the kind the test set contains.</li>
+            <li><b>Limits.</b> One record at a time, no history: four and six weeks before a failure look alike, so about one Yes in three is early. The data is synthetic and for this hackathon only.</li>
+          </ul>
+        </section>
+      </div>
+      <section class="sec" id="replay"></section>
+    </div>`;
   renderReplay();
 }
 
 // The frame is built once. Only its contents are refreshed afterwards, so the slider can be dragged smoothly.
 function renderReplay() {
   $("#replay").innerHTML = `
-    <div class="card-head"><div><h2>Replay a week</h2><p>Pick any week of the two years. See what the model flagged, then what the data recorded next.</p></div>
-      <div class="seg" id="replay-seg"></div></div>
+    <header class="sec-head"><div><h2>Replay a week</h2><p>Pick any week of the two years. See what the model flagged, then what the data recorded next.</p></div>
+      <div class="tabs" id="replay-seg"></div></header>
     <div class="replay-bar">
       <button type="button" class="icon-btn" id="wk-prev" data-t="step" data-step="-1" aria-label="One week earlier">${icon("chevron", "flip")}</button>
       <strong id="replay-date"></strong>
@@ -101,21 +106,21 @@ function updateReplay() {
   const line = !showOutcome ? "These are the latest weeks: the next 30 days are not in the data yet."
     : high.length ? `${hits} of the ${high.length} High-risk aircraft failed within 30 days. ${fleet.filter((r) => r.level !== "High" && r.actual).length} failure(s) were not flagged High this week.`
       : "No aircraft was High risk this week.";
-  $("#replay-seg").innerHTML = `<button type="button" data-t="show" data-show="flagged" aria-pressed="${t.show === "flagged"}">Flagged (${flagged.length})</button>
-    <button type="button" data-t="show" data-show="all" aria-pressed="${t.show === "all"}">All ${fleet.length}</button>`;
+  $("#replay-seg").innerHTML = `<button type="button" data-t="show" data-show="flagged" aria-pressed="${t.show === "flagged"}">Flagged<span>${flagged.length}</span></button>
+    <button type="button" data-t="show" data-show="all" aria-pressed="${t.show === "all"}">All<span>${fleet.length}</span></button>`;
   $("#replay-date").textContent = fmtDate(t.data.weeks[week]);
   $("#wk-prev").disabled = week === 0;
   $("#wk-next").disabled = week === lastWeek();
   if (Number($("#week").value) !== week) $("#week").value = week;
-  $("#replay-counts").innerHTML = `${levelPill("High")}<b>${count("High")}</b>${levelPill("Medium")}<b>${count("Medium")}</b>${levelPill("Low")}<b>${count("Low")}</b>`;
-  $("#replay-line").innerHTML = `${icon(showOutcome ? "shield" : "info")}${line}`;
+  $("#replay-counts").innerHTML = `<span>${levelMark("High")}<b>${count("High")}</b></span><span>${levelMark("Medium")}<b>${count("Medium")}</b></span><span>${levelMark("Low")}<b>${count("Low")}</b></span>`;
+  $("#replay-line").textContent = line;
   $("#replay-grid").innerHTML = `
       <div class="table-wrap replay-table"><table><thead><tr><th>Aircraft</th><th>Risk, next 30 days</th><th>Level</th><th>Why</th>${showOutcome ? "<th>Next 30 days, as recorded</th>" : ""}</tr></thead>
         <tbody>${rows.map((r) => `<tr data-t="pick" data-id="${esc(r.id)}" class="${r.id === t.selected ? "is-open" : ""}" tabindex="0">
-          <td><span class="ac">${esc(r.id)}</span><span class="sub">Actuator ${esc(r.actuator)}</span></td><td class="c-risk">${riskBar(r.risk, r.level)}</td><td>${levelPill(r.level)}</td>
-          <td class="c-why">${esc(reason(r))}</td>${showOutcome ? `<td>${r.actual ? '<span class="tag tag-bad">Failed</span>' : '<span class="tag tag-off">No failure</span>'}</td>` : ""}</tr>`).join("")
+          <td><span class="mono ac">${esc(r.id)}</span><small>Actuator ${esc(r.actuator)}</small></td><td class="c-risk">${riskBar(r.risk, r.level)}</td><td>${levelMark(r.level)}</td>
+          <td class="c-why">${esc(reason(r))}</td>${showOutcome ? `<td>${r.actual ? '<span class="st st-bad">Failed</span>' : '<span class="muted">No failure</span>'}</td>` : ""}</tr>`).join("")
           || `<tr><td colspan="5" class="muted pad">No aircraft was flagged this week.</td></tr>`}</tbody></table></div>
-      <div class="replay-chart"><h3>${esc(t.selected)} · risk week by week</h3>${chart(t.selected)}
+      <div class="replay-chart"><h3><span class="mono">${esc(t.selected)}</span> · risk week by week</h3>${chart(t.selected)}
         <p class="fine">Dashed vertical lines mark a new actuator fitted after a failure. The red strip marks weeks whose record was a real Yes. Weeks after the chosen date are faded.</p></div>`;
 }
 
@@ -146,7 +151,7 @@ function chart(id) {
 
 document.addEventListener("click", (ev) => {
   const el = ev.target.closest("[data-t]");
-  if (!el || state.page !== "track" || !t.data) return;
+  if (!el || state.page !== "model" || !t.data) return;
   const act = el.dataset.t;
   if (act === "step") t.week = Math.min(Math.max(t.week + Number(el.dataset.step), 0), lastWeek());
   else if (act === "week") t.week = Number(el.dataset.week);
@@ -156,7 +161,7 @@ document.addEventListener("click", (ev) => {
 });
 
 document.addEventListener("input", (ev) => {
-  if (ev.target.id !== "week" || state.page !== "track") return;
+  if (ev.target.id !== "week" || state.page !== "model") return;
   t.week = Number(ev.target.value);
   updateReplay();
 });

@@ -155,6 +155,60 @@ def test_single_record_check(client):
     assert nothing["level"] == "Not scored" and nothing["risk"] is None and nothing["prediction"] is None
 
 
+WORN = {"Aircraft_ID": "B787-102", "Hydraulic_Fluid_Grade": "FG-A", "Flight_Hours_Last_7_Days": 95, "Flight_Cycles_Last_7_Days": 16,
+        "Actuator_Age_Hours": 3400, "Days_Since_Last_Service": 180, "Ambient_Temperature_C": 31, "Hydraulic_Pressure_PSI": 4950,
+        "Pressure_Variation_PSI": 78, "Hydraulic_Fluid_Temperature_C": 62, "Internal_Leakage_Rate_mL_Min": 24, "Actuation_Time_Seconds": 5.4,
+        "Reference_Leakage_Flow_mL_Min": 50, "Reference_Actuation_Time_Seconds": 6, "Diagnostic_Load_Ratio": 1}
+
+
+def review_one(client, values):
+    """Type one record in, let the team review it, and return the file, the run and what was proposed."""
+    made = client.post("/api/batches/record", json={"values": values})
+    assert made.status_code == 201
+    batch = made.json()
+    assert batch["records"] == 1 and batch["source"] == "manual"
+    run = wait_for(client, client.post("/api/agent/runs", json={"batch_id": batch["id"], "kind": "review"}).json()["run_id"])
+    assert run["status"] == "completed" and run["context"]["team"] is True
+    return batch, run, client.get(f"/api/batches/{batch['id']}/proposals").json()
+
+
+def test_one_typed_record_is_reviewed_by_the_same_team(client, svc):
+    batch, run, proposals = review_one(client, WORN)
+    assert batch["name"] == "Single record · B787-102"
+    called = [s["name"] for s in run["steps"] if s["type"] == "tool"]
+    assert called[:3] == ["assign_risk_agent", "check_records", "run_failure_model"] and "assign_stock_agent" in called and "reserve_parts" in called
+    assert [(p["aircraft_id"], p["action"], p["level"], p["part"]["status"]) for p in proposals] == [("B787-102", "repair", "High", "in_store")]
+    assert "This aircraft is predicted to fail within 30 days" in run["final_text"] and "1 of the 1" not in run["final_text"]
+    # the planner decides with one click each way; nothing is asked of them
+    assert client.post(f"/api/proposals/{proposals[0]['id']}/decision", json={"decision": "approved"}).json()["work_order_id"].startswith("WO-SIM-")
+    assert client.delete(f"/api/batches/{batch['id']}").status_code == 200           # a typed record can be removed like an upload
+
+
+def test_a_healthy_record_gets_no_action_and_a_blank_one_a_repeat_test(client):
+    healthy = {**WORN, "Aircraft_ID": "B787-101", "Actuator_Age_Hours": 1500, "Pressure_Variation_PSI": 55, "Internal_Leakage_Rate_mL_Min": 4, "Actuation_Time_Seconds": 3.9}
+    _batch, run, proposals = review_one(client, healthy)
+    assert proposals == [] and "needs no action now" in run["final_text"]
+    assert "assign_stock_agent" not in [s["name"] for s in run["steps"] if s["type"] == "tool"]      # no repair, so no parts are looked for
+
+    blank = {**WORN, "Aircraft_ID": "  ", "Internal_Leakage_Rate_mL_Min": "", "Actuation_Time_Seconds": None}
+    batch, run, proposals = review_one(client, blank)
+    assert batch["name"] == "Single record" and batch["not_scorable"] == 1
+    assert [(p["aircraft_id"], p["action"], p["risk"]) for p in proposals] == [("Unnamed aircraft", "retest", None)]
+    assert "No prediction could be made" in run["final_text"] and "0 of the 0" not in run["final_text"]
+    rejected = client.post(f"/api/proposals/{proposals[0]['id']}/decision", json={"decision": "rejected"}).json()
+    assert rejected["status"] == "rejected" and rejected["decision_note"] is None and rejected["work_order_id"] is None
+
+
+def test_a_typed_record_with_odd_values_is_cleaned_not_refused(client):
+    odd = {**WORN, "Aircraft_ID": "<b>X</b>" + "9" * 90, "Hydraulic_Fluid_Grade": "XX", "Pressure_Variation_PSI": "abc", "Ambient_Temperature_C": 9999, "Unknown_Column": 1}
+    made = client.post("/api/batches/record", json={"values": odd}).json()
+    record = client.get(f"/api/batches/{made['id']}/records").json()["rows"][0]
+    assert len(record["aircraft_id"]) <= schema.MAX_ID_LENGTH and record["issues"] == 3 and record["scorable"]
+    assert client.post("/api/batches/record", json={"values": "not an object"}).status_code == 422
+    empty = client.post("/api/batches/record", json={"values": {}}).json()               # nothing typed at all: stored, and reported as unusable
+    assert empty["records"] == 1 and empty["not_scorable"] == 1
+
+
 def test_model_outage_is_visible_everywhere_and_recoverable(client):
     assert client.post("/api/demo/outage", json={"enabled": True}).json()["available"] is False
     assert client.get("/api/health").json()["model"]["simulated_outage"] is True
@@ -272,3 +326,86 @@ def test_a_decision_that_did_not_apply_is_reported(client, svc):
     stale = decide(second["id"], "approved")
     assert stale.status_code == 409 and "replaced by a newer proposal" in stale.json()["detail"]
     assert decide("P-9999", "approved").status_code == 404
+
+
+# ---------------------------------------------------------------------------- changing a decision that was already taken
+def decide_on(client, proposal_id, what, override=False):
+    return client.post(f"/api/proposals/{proposal_id}/decision", json={"decision": what, "override": override})
+
+
+def test_a_decision_can_be_changed_and_the_work_order_follows(client):
+    review(client, list_size=3)
+    first = client.get(f"/api/batches/{SAMPLE_ID}/proposals").json()[0]
+    order = decide_on(client, first["id"], "approved").json()["work_order_id"]
+    assert decide_on(client, first["id"], "rejected").status_code == 409             # without an explicit override nothing changes
+    assert [o["status"] for o in client.get("/api/work-orders").json()] == ["Created (simulated)"]
+
+    changed = decide_on(client, first["id"], "rejected", override=True)             # approved -> rejected: the order is cancelled, not deleted
+    assert changed.status_code == 200 and changed.json()["status"] == "rejected" and changed.json()["work_order_id"] is None
+    assert [(o["id"], o["status"], bool(o["cancelled_at"])) for o in client.get("/api/work-orders").json()] == [(order, "Cancelled (simulated)", True)]
+
+    again = decide_on(client, first["id"], "approved", override=True).json()         # rejected -> approved: a new order, the old one stays on record
+    assert again["status"] == "approved" and again["work_order_id"] not in (None, order)
+    orders = {o["id"]: o for o in client.get("/api/work-orders").json()}
+    assert len(orders) == 2 and orders[order]["cancelled_at"] and not orders[again["work_order_id"]]["cancelled_at"]
+
+    same = decide_on(client, first["id"], "approved", override=True).json()          # the same decision again is harmless
+    assert same["work_order_id"] == again["work_order_id"] and len(client.get("/api/work-orders").json()) == 2
+    assert client.get(f"/api/batches/{SAMPLE_ID}").json()["proposals"] == {"pending": 2, "approved": 1, "rejected": 0}
+    assert decide_on(client, "P-9999", "approved", override=True).status_code == 404
+    assert decide_on(client, first["id"], "maybe", override=True).status_code == 400
+
+
+def test_changing_a_decision_gives_back_or_takes_the_spare_part(client):
+    review(client, list_size=5)
+    free = lambda: client.get("/api/health").json()["stock"]["free"]
+    repair = next(p for p in client.get(f"/api/batches/{SAMPLE_ID}/proposals").json() if p["action"] == "repair" and p["part"]["status"] == "in_store")
+    before = free()
+    decide_on(client, repair["id"], "approved")
+    assert free() == before - 1                                                      # an approved repair keeps its unit
+    decide_on(client, repair["id"], "rejected", override=True)
+    assert free() == before                                                          # rejecting it gives the unit back
+    decide_on(client, repair["id"], "approved", override=True)
+    assert free() == before - 1
+
+
+def test_an_override_never_revives_a_replaced_proposal_or_doubles_an_aircraft(client, svc):
+    review(client, list_size=3)
+    first, second = client.get(f"/api/batches/{SAMPLE_ID}/proposals").json()[:2]
+    assert decide_on(client, first["id"], "rejected").status_code == 200
+    review(client, list_size=3)                                                      # the pending ones are replaced by a new review
+    stale = decide_on(client, second["id"], "approved", override=True)
+    assert stale.status_code == 409 and "replaced by a newer proposal" in stale.json()["detail"]
+    # The rejected aircraft is proposed again by a later review. Approving the old rejection now would give it two open actions.
+    svc.store.add_proposals(first["run_id"], SAMPLE_ID, [{"record_id": first["record_id"], "aircraft_id": first["aircraft_id"], "action": "repair",
+                                                          "note": "", "reason": first["reason"], "risk": first["risk"], "level": first["level"], "time_left": None}])
+    blocked = decide_on(client, first["id"], "approved", override=True)
+    assert blocked.status_code == 409 and "newer proposal that is still open" in blocked.json()["detail"]
+    assert client.get("/api/work-orders").json() == []
+    assert next(p for p in client.get(f"/api/batches/{SAMPLE_ID}/proposals").json() if p["id"] == first["id"])["status"] == "rejected"
+
+
+def test_a_parts_request_decision_can_be_changed(client):
+    review(client, list_size=25)                                                     # more repairs than the hangar store holds, so a request is drafted
+    request = client.get(f"/api/parts-requests?batch_id={SAMPLE_ID}").json()[0]
+    decide = lambda what, override=False: client.post(f"/api/parts-requests/{request['id']}/decision", json={"decision": what, "override": override})
+    assert request["status"] == "pending" and decide("rejected").json()["status"] == "rejected"
+    late = decide("approved")
+    assert late.status_code == 409 and "already rejected" in late.json()["detail"]
+    assert decide("approved", override=True).json()["status"] == "approved"
+    assert decide("rejected", override=True).json()["status"] == "rejected"
+    assert decide("rejected", override=True).json()["status"] == "rejected"          # the same decision again is harmless
+    assert client.post("/api/parts-requests/PR-SIM-9999/decision", json={"decision": "approved", "override": True}).status_code == 404
+
+
+# ---------------------------------------------------------------------------- the steps behind a suggested action
+def test_a_record_carries_the_steps_for_each_action_that_fits_it(client):
+    review(client, list_size=3)
+    top = client.get(f"/api/batches/{SAMPLE_ID}/records", params={"limit": 1}).json()["rows"][0]
+    detail = client.get(f"/api/batches/{SAMPLE_ID}/records/{top['record_id']}").json()
+    assert set(detail["plans"]) == {"repair", "inspect", "retest", "monitor"} and detail["suggested_action"] == "repair"
+    repair = detail["plans"]["repair"]
+    assert repair["when"] == "This week" and repair["steps"][0]["do"] == "Book a hangar slot this week." and len(repair["steps"]) >= 5
+    unscored = client.get(f"/api/batches/{SAMPLE_ID}/records", params={"level": "Not scored", "limit": 1}).json()["rows"][0]
+    only = client.get(f"/api/batches/{SAMPLE_ID}/records/{unscored['record_id']}").json()["plans"]
+    assert set(only) == {"retest"} and "no prediction was made" in only["retest"]["steps"][0]["why"]      # nothing but a re-test fits

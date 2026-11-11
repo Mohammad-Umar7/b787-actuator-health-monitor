@@ -20,31 +20,39 @@ from .llm import LLMError, OfflinePlanner, Reply
 from .prompts import SYSTEM
 
 
-def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings, store: Store, primary, planner: OfflinePlanner) -> str:
-    """Run one agent task to the end and return its final text. Everything is recorded in the store as it goes."""
-    definitions = tools.definitions(settings.strict_tools)
+def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings, store: Store, primary, planner: OfflinePlanner, *,
+        system: str = SYSTEM, definitions: list | None = None, allowed: list | None = None, agent: str | None = None,
+        max_steps: int | None = None, budget: dict | None = None) -> str:
+    """Run one agent's conversation to the end and return its final text. Everything is recorded in the store as it goes.
+
+    A single agent uses the defaults. In a team review each member is one call of this function with its own
+    system prompt, its own tools (`definitions`, `allowed`) and its name (`agent`), and they share one `budget`,
+    so the spend limit and a hand-over to the built-in planner hold for the whole run, not per member."""
+    definitions = definitions if definitions is not None else tools.definitions(settings.strict_tools)
+    budget = budget if budget is not None else {"spent": 0.0, "claude_failed": False}
+    limit = max_steps or settings.max_steps
     messages = [{"role": "user", "content": user_text}]
     llm = primary
-    run_cost = 0.0
     final_text = None
 
     def hand_over(reason: str) -> None:
         nonlocal llm
-        store.note(run_id, f"{reason} Continuing with the built-in planner. The model tools run exactly as before.", is_error=True)
+        store.note(run_id, f"{reason} Continuing with the built-in planner. The model tools run exactly as before.", is_error=True, agent=agent)
         store.set_mode(run_id, "claude, then built-in planner")
+        budget["claude_failed"] = True
         llm = planner
 
-    for _ in range(settings.max_steps):
+    for _ in range(limit):
         if llm is primary and llm.billable:
             if store.spend_today() >= settings.daily_usd_limit:
                 hand_over(f"Today's spend limit of ${settings.daily_usd_limit:.2f} for Claude has been reached.")
-            elif run_cost >= settings.run_usd_limit:
+            elif budget["spent"] >= settings.run_usd_limit:
                 hand_over(f"This run reached its spend limit of ${settings.run_usd_limit:.2f}.")
 
-        seq = store.start_step(run_id, "model", llm.label, {"messages_sent": len(messages)})
+        seq = store.start_step(run_id, "model", llm.label, {"messages_sent": len(messages)}, agent=agent)
         started = time.monotonic()
         try:
-            reply: Reply = llm.reply(SYSTEM, definitions, messages, ctx)
+            reply: Reply = llm.reply(system, definitions, messages, ctx)
         except LLMError as err:
             store.finish_step(run_id, seq, output={"error": str(err)}, is_error=True, duration_ms=_ms(started))
             if llm is planner:
@@ -53,7 +61,7 @@ def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings,
             continue
         if not llm.billable and settings.planner_pace:
             time.sleep(settings.planner_pace)       # the planner answers instantly; this only makes its steps visible
-        run_cost += reply.cost
+        budget["spent"] += reply.cost
         store.add_usage(run_id, reply.input_tokens, reply.output_tokens, reply.cache_write_tokens, reply.cache_read_tokens, reply.cost)
         store.finish_step(run_id, seq, duration_ms=_ms(started), tokens_in=reply.input_tokens + reply.cache_write_tokens + reply.cache_read_tokens,
                           tokens_out=reply.output_tokens, cost_usd=reply.cost,
@@ -62,7 +70,7 @@ def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings,
                                   "tokens": {"input": reply.input_tokens, "output": reply.output_tokens,
                                              "cache_write": reply.cache_write_tokens, "cache_read": reply.cache_read_tokens}})
         for notice in reply.notices:
-            store.note(run_id, notice)
+            store.note(run_id, notice, agent=agent)
 
         if reply.stop_reason == "refusal":
             if llm is planner:
@@ -83,9 +91,9 @@ def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings,
 
         results = []
         for call in reply.tool_calls:   # a turn may request several tools; all results go back in one message
-            seq = store.start_step(run_id, "tool", call.name, call.input)
+            seq = store.start_step(run_id, "tool", call.name, call.input, agent=agent)
             started = time.monotonic()
-            content, is_error = tools.execute(call.name, call.input, ctx, call.id)
+            content, is_error = tools.execute(call.name, call.input, ctx, call.id, allowed=allowed)
             store.finish_step(run_id, seq, output=json.loads(content), is_error=is_error, duration_ms=_ms(started))
             result = {"type": "tool_result", "tool_use_id": call.id, "content": content}
             if is_error:
@@ -93,7 +101,7 @@ def run(run_id: str, user_text: str, ctx: tools.ToolContext, settings: Settings,
             results.append(result)
         messages.append({"role": "user", "content": results})
     else:
-        store.note(run_id, f"Stopped after {settings.max_steps} steps without a final answer.", is_error=True)
+        store.note(run_id, f"Stopped after {limit} steps without a final answer.", is_error=True, agent=agent)
         final_text = ("The assistant did not finish within its step limit. Any actions it filed before stopping are listed "
                       "for your review; run it again to continue.")
 

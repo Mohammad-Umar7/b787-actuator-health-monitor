@@ -6,11 +6,12 @@ import threading
 import pandas as pd
 
 from . import schema
-from .agent import loop, prompts, tools
+from .agent import loop, prompts, team, tools
 from .agent.llm import ClaudeLLM, OfflinePlanner
 from .batches import Batch, BatchStore
 from .config import ARTIFACTS, Settings, get_settings
 from .model import RiskModel
+from .stock import PRESETS, SimulatedStock
 from .store import Store, now
 
 SAMPLE_ID = "sample"
@@ -32,6 +33,7 @@ class Services:
         self.settings = settings or get_settings()
         self.model = RiskModel().load()
         self.store = Store(self.settings.data_dir / "acumain.db")
+        self.stock = SimulatedStock(self.store)
         self.batches = BatchStore(self.model, self.settings.data_dir)
         self.batches.load_saved()
         if self.batches.get(SAMPLE_ID) is None:
@@ -86,6 +88,20 @@ class Services:
         temp.results = self.model.score(temp.frame, temp.checked.scorable)        # raises ModelUnavailable
         return self.batches.detail(temp, "manual-check")
 
+    def add_record(self, values: dict) -> Batch:
+        """One record typed into the form becomes a file of its own, so the team reviews it exactly as it reviews a
+        fleet file: same checks, same model call, same stock check, same approval."""
+        if not isinstance(values, dict):
+            raise RequestError("Send the readings as an object of column names and values.", 422)
+        row = {col: ("" if values.get(col) is None else str(values.get(col)).strip()) for col in schema.REQUIRED}
+        aircraft = " ".join(str(values.get("Aircraft_ID") or "").split())[:schema.MAX_ID_LENGTH]
+        row["Aircraft_ID"] = aircraft or "Unnamed aircraft"
+        row["Observation_Date"] = now()[:10]
+        try:
+            return self.batches.add(f"Single record · {aircraft}" if aircraft else "Single record", "manual", pd.DataFrame([row]))
+        except schema.SchemaError as err:
+            raise RequestError(str(err), 422) from err
+
     def reset(self, batch_id: str) -> None:
         with self._gate:
             batch = self.batch(batch_id)
@@ -112,7 +128,10 @@ class Services:
 
     # ------------------------------------------------------------------ agent runs
     def start_run(self, batch_id: str, kind: str, question: str | None = None, record_ids: list | None = None,
-                  list_size: int = 25, selected: str | None = None, screen: dict | None = None, wait: bool = False) -> str:
+                  list_size: int = 25, selected: str | None = None, screen: dict | None = None, wait: bool = False,
+                  as_team: bool = False) -> str:
+        """`as_team` runs a review with the orchestrator, the Risk agent, the Stock agent and the Supply agent.
+        Without it the Risk agent works alone, which is also how a question is answered."""
         batch = self.batch(batch_id)
         if kind not in ("review", "question"):
             raise RequestError("kind must be 'review' or 'question'.")
@@ -134,7 +153,9 @@ class Services:
         status = self.agent_status()
         primary = self.claude if status["mode"] == "claude" else None
         planner = OfflinePlanner(kind, list_size, selected)
-        context = {"kind": kind, "question": question or None, "record_ids": scope, "list_size": list_size, "selected": selected, "screen": screen}
+        as_team = bool(as_team) and kind == "review"
+        context = {"kind": kind, "question": question or None, "record_ids": scope, "list_size": list_size, "selected": selected, "screen": screen,
+                   "team": as_team}
         task = "Prepare the action list" if kind == "review" else question
         with self._gate:
             if self.store.active_run(batch_id):
@@ -150,11 +171,14 @@ class Services:
         else:
             user_text = prompts.question_message(question, batch.name, self.batches.summary(batch), selected, screen)
         ctx = tools.ToolContext(batches=self.batches, model=self.model, store=self.store, batch=batch, run_id=run_id,
-                                scope_ids=scope, list_size=list_size)
+                                scope_ids=scope, list_size=list_size, stock=self.stock)
 
         def work():
             try:
-                final = loop.run(run_id, user_text, ctx, self.settings, self.store, primary or planner, planner)
+                if as_team:
+                    final = team.run_review(run_id, user_text, ctx, self.settings, self.store, primary, list_size)
+                else:
+                    final = loop.run(run_id, user_text, ctx, self.settings, self.store, primary or planner, planner)
                 self.store.finish_run(run_id, "completed", final)
             except Exception as err:  # the run must always end in a recorded state
                 self.store.finish_run(run_id, "failed", None, error=f"{type(err).__name__}: {err}")
@@ -168,26 +192,52 @@ class Services:
         return run_id
 
     # ------------------------------------------------------------------ decisions
-    def decide(self, proposal_id: str, decision: str, note: str | None = None) -> dict:
+    def decide(self, proposal_id: str, decision: str, note: str | None = None, override: bool = False) -> dict:
+        """`override` lets the planner change a decision they already took. See `Store.decide`."""
         if decision not in ("approved", "rejected"):
             raise RequestError("decision must be 'approved' or 'rejected'.")
-        proposal = self.store.decide(proposal_id, decision, note=(note or "").strip()[:300] or None)
+        proposal = self.store.decide(proposal_id, decision, note=(note or "").strip()[:300] or None, override=bool(override))
         if proposal is None:
             raise RequestError("That proposal does not exist.", 404)
+        if proposal.get("blocked_by"):
+            raise RequestError("This aircraft has a newer proposal that is still open. Decide on that one instead; nothing changed.", 409)
         if proposal["status"] != decision:
             # The decision was not applied: someone decided first, or a newer review replaced this proposal.
             was = "replaced by a newer proposal" if proposal["status"] == "superseded" else f"already {proposal['status']}"
             raise RequestError(f"This proposal was {was}, so nothing changed. The list has been refreshed.", 409)
         return proposal
 
-    def decide_many(self, batch_id: str, decision: str, ids: list | None = None, action: str | None = None) -> list:
+    def decide_many(self, batch_id: str, decision: str, ids: list | None = None, action: str | None = None, note: str | None = None) -> list:
         self.batch(batch_id)
         pending = [p for p in self.store.list_proposals(batch_id=batch_id, status="pending")
                    if (not ids or p["id"] in ids) and (not action or p["action"] == action)]
         done = []
         for p in pending:
             try:
-                done.append(self.decide(p["id"], decision))
+                done.append(self.decide(p["id"], decision, note))
             except RequestError:        # decided by someone else in the meantime: leave it as it is
                 continue
         return done
+
+    # ------------------------------------------------------------------ spare parts (simulated)
+    def decide_parts_request(self, request_id: str, decision: str, note: str | None = None, override: bool = False) -> dict:
+        """Approve or reject the Supply agent's request. Approving sends nothing anywhere: the supply department is simulated.
+        `override` lets the planner change a decision they already took."""
+        if decision not in ("approved", "rejected"):
+            raise RequestError("decision must be 'approved' or 'rejected'.")
+        request = self.store.decide_parts_request(request_id, decision, (note or "").strip()[:300] or None, override=bool(override))
+        if request is None:
+            raise RequestError("That parts request does not exist.", 404)
+        if request["status"] != decision:
+            was = "replaced by a newer request" if request["status"] == "superseded" else f"already {request['status']}"
+            raise RequestError(f"This parts request was {was}, so nothing changed.", 409)
+        return request
+
+    def set_stock(self, values: dict | None = None, preset: str | None = None, outage: bool | None = None) -> dict:
+        if preset is not None and preset not in PRESETS:
+            raise RequestError(f"preset must be one of {', '.join(PRESETS)}.")
+        if values or preset:
+            self.stock.set_levels(values, preset)
+        if outage is not None:
+            self.stock.simulated_outage = bool(outage)
+        return self.stock.status()

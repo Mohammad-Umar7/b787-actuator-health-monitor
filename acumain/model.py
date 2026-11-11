@@ -207,6 +207,85 @@ class RiskModel:
             return "retest" if key_missing else "inspect"
         return "monitor"
 
+    def deadline_days(self, risk) -> int | None:
+        """How many days a repair has before the early end of the typical time to failure. None without a prediction."""
+        if risk is None or pd.isna(risk):
+            return None
+        weeks = self.band(float(risk)).get("weeks_low")
+        return None if weeks is None else 7 * max(1, int(weeks))
+
+    def next_steps(self, action: str, risk=None, op=None, leak=None, missing: list | None = None, factors: list | None = None) -> dict:
+        """The planner's steps for one action on one record: what to do, by when, and why.
+
+        Written by fixed rules from the model's own result (risk, typical time to failure, the readings behind it).
+        Nothing here is generated text, and it is planning guidance: the maintenance work itself follows the manual.
+        """
+        missing = list(missing or [])
+        has_risk = risk is not None and not pd.isna(risk)
+        when = self.time_left(risk) if has_risk else None
+        weeks = self.band(float(risk)).get("weeks_low") if has_risk else None
+        # A deadline that falls before the early end of the typical time to failure.
+        deadline = ("at the next opportunity" if weeks is None else "this week" if weeks <= 0
+                    else "within 1 week" if weeks == 1 else f"within {int(weeks)} weeks")
+        thresholds = self.reference.get("thresholds", {})
+        high, medium = thresholds.get("high", self.cutoff), thresholds.get("medium", self.medium)
+        seen = self.reason(op, leak, scorable=has_risk)
+        seen = seen[0].lower() + seen[1:]
+        drivers = ", ".join(f"{f['name'].lower()} {f['share']}%" for f in (factors or []) if f.get("share"))
+        typical = f"Aircraft at this risk have typically failed in {when}." if when else None
+        retake = ((f"Have the {' and '.join(missing)} reading taken at the same visit.",
+                   "This prediction was made without it, so it carries reduced confidence.") if missing and has_risk else None)
+
+        if action == "repair":
+            goal = "Repair or replace the actuator before it fails."
+            due = deadline[0].upper() + deadline[1:]
+            steps = [
+                (f"Book a hangar slot {deadline}.", typical),
+                ("Reserve a replacement actuator and confirm it is in the store before the slot.", "So the job does not start late waiting for the part."),
+                ("Assign a technician and the tooling for the nose landing gear actuator.", None),
+                (f"Put the model's finding on the job card: {seen}.", f"Share of the added risk: {drivers}." if drivers else None),
+                retake,
+                ("Take the aircraft out of the flying programme for that slot and tell operations.", "So the stop is planned, not a surprise."),
+                ("After the work, repeat the diagnostic test and load the new record here.", "The risk should fall back to Low. If it does not, the job is not finished."),
+            ]
+        elif action == "inspect":
+            goal = "Look at the actuator before the risk reaches the failure line."
+            due = f"{deadline[0].upper() + deadline[1:]}, at the next planned stop"
+            steps = [
+                (f"Add an inspection of the nose landing gear actuator to the next planned stop, {deadline}.", typical),
+                ("Ask for the two readings behind the risk to be checked: actuation time and internal leakage.", f"The model saw: {seen}."),
+                retake,
+                ("Repeat the diagnostic test at that stop and load the new record here.", None),
+                (f"Decide from the new result: at {high:g}% risk or more, schedule a repair. Below {medium:g}%, go back to routine monitoring.", None),
+            ]
+        elif action == "retest":
+            names = " and ".join(missing) if missing else "actuation time and leakage"
+            goal = "Get a usable reading, so the model can make a reliable prediction."
+            due = deadline[0].upper() + deadline[1:]
+            steps = [
+                (f"Repeat the diagnostic test on this aircraft {deadline}.",
+                 typical if has_risk else "Both key readings are missing, so no prediction was made."),
+                (f"Make sure the {names} reading{'s are' if ' and ' in names else ' is'} recorded this time.",
+                 "The model needs at least one of the two, and is most reliable with both."),
+                ("If a reading is missing again, have the test equipment checked.", None),
+                ("Load the new record here. The model scores it straight away.", None),
+                ("Until then, treat this aircraft as unknown, not as safe.", "No prediction is not the same as low risk."),
+            ]
+        else:
+            action = "monitor"
+            lead = self.reference.get("validation", {}).get("lead_weeks")
+            goal = "Nothing to do now. Keep the records coming."
+            due = "No deadline"
+            steps = [
+                ("No action is needed on this aircraft now.", f"Its risk is below the watch line of {medium:g}%."),
+                ("Keep the routine diagnostic test in the schedule.",
+                 f"The model typically flags a failing actuator {lead} weeks ahead, but only if records keep arriving." if lead else None),
+                ("Look again when the next record is loaded.", None),
+            ]
+        return {"action": action, "title": ACTIONS[action], "goal": goal, "when": due,
+                "steps": [{"do": do, "why": why} for do, why in (s for s in steps if s)],
+                "scope": "Planning steps for the maintenance planner. The work on the aircraft follows the approved maintenance manual; nothing here replaces it."}
+
     def evidence(self, op, leak) -> dict:
         """How often training records with these reading levels were followed by a failure within 30 days."""
         ev = self.reference.get("evidence", {})

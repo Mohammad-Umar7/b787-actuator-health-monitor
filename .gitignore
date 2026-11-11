@@ -30,3 +30,5 @@ dashboard/static/demo.mp4
 # macOS junk inside the organisers' zip
 __MACOSX/
 .DS_Store
+# The built public replay copy (made by public_replay/build.py; it holds recorded data and the Vercel link)
+public_replay/site/

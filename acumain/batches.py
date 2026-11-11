@@ -29,7 +29,7 @@ KEY_READINGS = ("op_level", "leak_level")
 class Batch:
     id: str
     name: str
-    source: str                       # "sample" or "upload"
+    source: str                       # "sample", "upload", or "manual" for one record typed into the form
     created_at: str
     checked: schema.Checked
     results: pd.DataFrame | None = None
@@ -244,12 +244,15 @@ class BatchStore:
             "factors": [{"name": name, "share": int(r[key])} for name, key in (("Operation time", "f_op"), ("Leakage", "f_leak"), ("Pressure variation", "f_pv")) if int(r[key]) > 0],
             "evidence": m.evidence(op, leak),
         })
+        missing_key = [name for name, v in (("actuation time", op), ("leakage", leak)) if pd.isna(v)]
         if out["scorable"]:
             band = m.band(float(r["risk"]))
             out["band"] = {k: band[k] for k in ("from", "to", "n", "in_30_days", "in_12_weeks")}
-            missing_key = [name for name, v in (("actuation time", op), ("leakage", leak)) if pd.isna(v)]
             out["confidence"] = (f"Reduced: this prediction was made without the {' and '.join(missing_key)} reading." if missing_key
                                  else "Normal: both key readings were available.")
+        # The planner's steps for each action that makes sense here. A record with no prediction can only be re-tested.
+        possible = ("repair", "inspect", "retest", "monitor") if out["scorable"] else ("retest",)
+        out["plans"] = {a: m.next_steps(a, r["risk"] if out["scorable"] else None, op, leak, missing_key, out["factors"]) for a in possible}
         return out
 
 

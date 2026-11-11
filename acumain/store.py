@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS proposals (
 CREATE TABLE IF NOT EXISTS work_orders (
   id TEXT PRIMARY KEY, proposal_id TEXT, batch_id TEXT, record_id TEXT, aircraft_id TEXT, action TEXT,
   status TEXT, created_at TEXT);
+CREATE TABLE IF NOT EXISTS parts_requests (
+  id TEXT PRIMARY KEY, run_id TEXT, batch_id TEXT, status TEXT, lines TEXT, note TEXT,
+  created_at TEXT, decided_at TEXT, decision_note TEXT);
+CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 """
 MAX_STORED = 12000   # characters of a step's input or output kept in the log
 
@@ -64,8 +68,11 @@ class Store:
         self._lock = threading.RLock()
         with self._lock:
             self._db.executescript(SCHEMA)
-            if "archived" not in [row[1] for row in self._db.execute("PRAGMA table_info(runs)")]:   # a database from before this column existed
-                self._db.execute("ALTER TABLE runs ADD COLUMN archived INTEGER DEFAULT 0")
+            # Columns added after the first version: a database from before then gets them here.
+            for table, column, kind in (("runs", "archived", "INTEGER DEFAULT 0"), ("steps", "agent", "TEXT"), ("proposals", "part", "TEXT"),
+                                        ("work_orders", "cancelled_at", "TEXT")):
+                if column not in [row[1] for row in self._db.execute(f"PRAGMA table_info({table})")]:
+                    self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
             # A run left "running" by a previous process can never finish.
             self._db.execute("UPDATE runs SET status='failed', error='The server stopped before this run finished.', finished_at=? WHERE status='running'", (now(),))
             self._db.execute("UPDATE steps SET status='failed' WHERE status='running'")
@@ -95,11 +102,12 @@ class Store:
                   (run_id, kind, task, batch_id, "running", mode, model, now(), _json(context)))
         return run_id
 
-    def start_step(self, run_id: str, type_: str, name: str, input_=None) -> int:
+    def start_step(self, run_id: str, type_: str, name: str, input_=None, agent: str | None = None) -> int:
+        """`agent` says which member of the team took the step: lead, risk, stock or supply. None for a single agent."""
         with self._lock:
             seq = self._db.execute("SELECT COALESCE(MAX(seq), 0) + 1 FROM steps WHERE run_id=?", (run_id,)).fetchone()[0]
-            self._db.execute("INSERT INTO steps (run_id, seq, type, name, status, input, started_at) VALUES (?,?,?,?,?,?,?)",
-                             (run_id, seq, type_, name, "running", _json(input_), now()))
+            self._db.execute("INSERT INTO steps (run_id, seq, type, name, status, input, started_at, agent) VALUES (?,?,?,?,?,?,?,?)",
+                             (run_id, seq, type_, name, "running", _json(input_), now(), agent))
             self._db.commit()
         return seq
 
@@ -108,8 +116,8 @@ class Store:
         self._run("UPDATE steps SET status=?, output=?, is_error=?, duration_ms=?, tokens_in=?, tokens_out=?, cost_usd=? WHERE run_id=? AND seq=?",
                   ("failed" if is_error else "done", _json(output), int(is_error), duration_ms, tokens_in, tokens_out, cost_usd, run_id, seq))
 
-    def note(self, run_id: str, text: str, is_error: bool = False) -> None:
-        seq = self.start_step(run_id, "notice", "notice")
+    def note(self, run_id: str, text: str, is_error: bool = False, agent: str | None = None) -> None:
+        seq = self.start_step(run_id, "notice", "notice", agent=agent)
         self.finish_step(run_id, seq, output={"text": text}, is_error=is_error)
 
     def add_usage(self, run_id: str, input_tokens: int, output_tokens: int, cache_write: int, cache_read: int, cost: float) -> None:
@@ -188,16 +196,37 @@ class Store:
             if value:
                 sql += f" AND {column}=?"
                 args.append(value)
-        return self._all(sql + " ORDER BY CASE action WHEN 'repair' THEN 0 WHEN 'retest' THEN 1 ELSE 2 END, risk DESC, id", args)
+        rows = self._all(sql + " ORDER BY CASE action WHEN 'repair' THEN 0 WHEN 'retest' THEN 1 ELSE 2 END, risk DESC, id", args)
+        for row in rows:
+            row["part"] = _load(row.get("part"))
+        return rows
 
-    def decide(self, proposal_id: str, decision: str, by: str = "planner", note: str | None = None) -> dict | None:
-        """Approve or reject. Approval is the only thing that creates a (simulated) work order."""
+    def set_part(self, proposal_id: str, part: dict | None) -> None:
+        """Where the spare part for a proposed repair comes from, and when it arrives. Simulated."""
+        self._run("UPDATE proposals SET part=? WHERE id=?", (None if part is None else _json(part), proposal_id))
+
+    def decide(self, proposal_id: str, decision: str, by: str = "planner", note: str | None = None, override: bool = False) -> dict | None:
+        """Approve or reject. Approval is the only thing that creates a (simulated) work order.
+
+        Without `override` only a pending proposal can be decided. With it, the planner changes a decision already
+        taken: rejecting an approved action cancels its work order (the order stays on record, marked cancelled),
+        and approving a rejected one creates a new work order. A proposal that a newer review replaced can never
+        be decided. Returns the proposal as it now stands, so the caller can tell whether the decision applied."""
         with self._lock:
             row = self._db.execute("SELECT * FROM proposals WHERE id=?", (proposal_id,)).fetchone()
             if not row:
                 return None
-            if row["status"] != "pending":
-                return dict(row)
+            status = row["status"]
+            if status == decision or status == "superseded" or (status != "pending" and not override):
+                return self._proposal(row)
+            if status == "rejected":
+                # The record may have been proposed again since. Two open actions for one aircraft would be a mistake.
+                other = self._db.execute("SELECT id FROM proposals WHERE batch_id=? AND record_id=? AND id!=? AND status IN ('pending','approved') LIMIT 1",
+                                         (row["batch_id"], row["record_id"], proposal_id)).fetchone()
+                if other:
+                    return {**self._proposal(row), "blocked_by": other["id"]}
+            if status == "approved" and row["work_order_id"]:
+                self._db.execute("UPDATE work_orders SET status=?, cancelled_at=? WHERE id=?", ("Cancelled (simulated)", now(), row["work_order_id"]))
             work_order = None
             if decision == "approved":
                 work_order = self._next_id("work_orders", "WO-SIM")
@@ -206,7 +235,13 @@ class Store:
             self._db.execute("UPDATE proposals SET status=?, decided_at=?, decided_by=?, decision_note=?, work_order_id=? WHERE id=?",
                              (decision, now(), by, note, work_order, proposal_id))
             self._db.commit()
-            return dict(self._db.execute("SELECT * FROM proposals WHERE id=?", (proposal_id,)).fetchone())
+            return self._proposal(self._db.execute("SELECT * FROM proposals WHERE id=?", (proposal_id,)).fetchone())
+
+    @staticmethod
+    def _proposal(row) -> dict:
+        out = dict(row)
+        out["part"] = _load(out.get("part"))
+        return out
 
     def list_work_orders(self, batch_id: str | None = None) -> list:
         if batch_id:
@@ -219,5 +254,51 @@ class Store:
         with self._lock:
             self._db.execute("DELETE FROM work_orders WHERE batch_id=?", (batch_id,))
             self._db.execute("DELETE FROM proposals WHERE batch_id=?", (batch_id,))
+            self._db.execute("DELETE FROM parts_requests WHERE batch_id=?", (batch_id,))
             self._db.execute("UPDATE runs SET archived=1 WHERE batch_id=?", (batch_id,))
             self._db.commit()
+
+    # ------------------------------------------------------------------ parts requests (simulated)
+    def add_parts_request(self, run_id: str, batch_id: str, lines: list, note: str | None = None) -> str:
+        """File a request to the supply department. A batch keeps one open request: a new one replaces a pending one."""
+        with self._lock:
+            self._db.execute("UPDATE parts_requests SET status='superseded', decided_at=? WHERE batch_id=? AND status='pending'", (now(), batch_id))
+            rid = self._next_id("parts_requests", "PR-SIM")
+            self._db.execute("INSERT INTO parts_requests (id, run_id, batch_id, status, lines, note, created_at) VALUES (?,?,?,?,?,?,?)",
+                             (rid, run_id, batch_id, "pending", _json(lines), note, now()))
+            self._db.commit()
+        return rid
+
+    def list_parts_requests(self, batch_id: str | None = None, run_id: str | None = None) -> list:
+        sql, args = "SELECT * FROM parts_requests WHERE status != 'superseded'", []
+        for column, value in (("batch_id", batch_id), ("run_id", run_id)):
+            if value:
+                sql += f" AND {column}=?"
+                args.append(value)
+        rows = self._all(sql + " ORDER BY created_at DESC, id DESC", args)
+        for row in rows:
+            row["lines"] = _load(row["lines"]) or []
+        return rows
+
+    def decide_parts_request(self, request_id: str, decision: str, note: str | None = None, override: bool = False) -> dict | None:
+        """Approve or reject a parts request. With `override`, a decision already taken can be changed.
+        Returns it as it now stands, or None if it does not exist."""
+        with self._lock:
+            row = self._db.execute("SELECT * FROM parts_requests WHERE id=?", (request_id,)).fetchone()
+            if not row:
+                return None
+            if row["status"] == "pending" or (override and row["status"] in ("approved", "rejected") and row["status"] != decision):
+                self._db.execute("UPDATE parts_requests SET status=?, decided_at=?, decision_note=? WHERE id=?", (decision, now(), note, request_id))
+                self._db.commit()
+                row = self._db.execute("SELECT * FROM parts_requests WHERE id=?", (request_id,)).fetchone()
+            out = dict(row)
+            out["lines"] = _load(out["lines"]) or []
+            return out
+
+    # ------------------------------------------------------------------ small settings kept between restarts
+    def get_setting(self, key: str, default=None):
+        row = self._one("SELECT value FROM settings WHERE key=?", (key,))
+        return default if row is None else _load(row["value"])
+
+    def set_setting(self, key: str, value) -> None:
+        self._run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, _json(value)))

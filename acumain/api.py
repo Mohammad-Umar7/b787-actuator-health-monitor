@@ -23,21 +23,34 @@ class RunRequest(BaseModel):
     list_size: int = 25
     selected: str | None = None
     screen: dict | None = None
+    team: bool = True          # a review is done by the team of agents unless this is switched off
 
 
 class Decision(BaseModel):
     decision: str
-    note: str | None = None
+    note: str | None = None    # optional; the dashboard does not ask for one
+    override: bool = False     # change a decision that was already taken
 
 
 class BulkDecision(BaseModel):
     decision: str
     ids: list[str] | None = None
     action: str | None = None
+    note: str | None = None
 
 
 class Outage(BaseModel):
     enabled: bool
+
+
+class StockChange(BaseModel):
+    preset: str | None = None              # "plenty", "short" or "none"
+    store: int | None = None
+    warehouse: int | None = None
+    warehouse_days: int | None = None
+    supplier_days: int | None = None
+    supplier_available: bool | None = None
+    outage: bool | None = None             # simulate the stock system being unreachable
 
 
 class RecordInput(BaseModel):
@@ -67,7 +80,7 @@ def create_app(services: Services | None = None) -> FastAPI:
     # ------------------------------------------------------------------ status and reference data
     @app.get("/api/health")
     def health():
-        return {"status": "ok", "version": __version__, "model": svc.model.info(), "agent": svc.agent_status()}
+        return {"status": "ok", "version": __version__, "model": svc.model.info(), "agent": svc.agent_status(), "stock": svc.stock.status()}
 
     @app.get("/api/meta")
     def meta():
@@ -105,6 +118,11 @@ def create_app(services: Services | None = None) -> FastAPI:
     async def upload(file: UploadFile = File(...), name: str | None = Form(None)):
         content = await file.read(schema.MAX_BYTES + 1)
         return batch_view(svc.upload(content, file.filename or "upload.csv", name))
+
+    @app.post("/api/batches/record", status_code=201)
+    def add_record(body: RecordInput):
+        """One record typed into the form, stored as a file with a single record so the team can review it."""
+        return batch_view(svc.add_record(body.values))
 
     @app.get("/api/batches/{batch_id}")
     def batch(batch_id: str):
@@ -147,7 +165,8 @@ def create_app(services: Services | None = None) -> FastAPI:
     # ------------------------------------------------------------------ the agent
     @app.post("/api/agent/runs", status_code=202)
     def start_run(body: RunRequest):
-        run_id = svc.start_run(body.batch_id, body.kind, body.question, body.record_ids, body.list_size, body.selected, body.screen)
+        run_id = svc.start_run(body.batch_id, body.kind, body.question, body.record_ids, body.list_size, body.selected, body.screen,
+                               as_team=body.team)
         return {"run_id": run_id}
 
     @app.get("/api/agent/runs")
@@ -169,15 +188,34 @@ def create_app(services: Services | None = None) -> FastAPI:
 
     @app.post("/api/proposals/{proposal_id}/decision")
     def decide(proposal_id: str, body: Decision):
-        return svc.decide(proposal_id, body.decision, body.note)
+        return svc.decide(proposal_id, body.decision, body.note, body.override)
 
     @app.post("/api/batches/{batch_id}/proposals/decision")
     def decide_many(batch_id: str, body: BulkDecision):
-        return svc.decide_many(batch_id, body.decision, body.ids, body.action)
+        return svc.decide_many(batch_id, body.decision, body.ids, body.action, body.note)
 
     @app.get("/api/work-orders")
     def work_orders(batch_id: str | None = None):
         return svc.store.list_work_orders(batch_id)
+
+    # ------------------------------------------------------------------ spare parts (simulated)
+    @app.get("/api/parts-requests")
+    def parts_requests(batch_id: str | None = None):
+        return svc.store.list_parts_requests(batch_id=batch_id)
+
+    @app.post("/api/parts-requests/{request_id}/decision")
+    def decide_parts_request(request_id: str, body: Decision):
+        return svc.decide_parts_request(request_id, body.decision, body.note, body.override)
+
+    @app.get("/api/demo/stock")
+    def stock():
+        return svc.stock.status()
+
+    @app.post("/api/demo/stock")
+    def set_stock(body: StockChange):
+        """Change the simulated spare-parts situation, to show how the agents handle plenty, a shortage or nothing at all."""
+        values = body.model_dump(exclude={"preset", "outage"}, exclude_none=True)
+        return svc.set_stock(values or None, body.preset, body.outage)
 
     # ------------------------------------------------------------------ demo control
     @app.post("/api/demo/outage")

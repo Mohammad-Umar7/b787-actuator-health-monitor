@@ -189,3 +189,28 @@ def test_repeated_ids_stay_unique_even_when_the_suffix_is_already_taken():
     ids = list(checked.frame["Record_ID"])
     assert ids[:3] == ["A", "A#2", "A#2#2"] and len(set(ids)) == 4 and "2 record(s) repeated an ID" in checked.notes[0]
     assert len(ids[3]) == schema.MAX_ID_LENGTH and len(checked.frame["Aircraft_ID"].iloc[3]) == schema.MAX_ID_LENGTH
+
+
+# ---------------------------------------------------------------------------- the planner's steps for an action
+def test_next_steps_say_what_to_do_by_when_and_why(model):
+    checked = schema.check(one_row(Actuation_Time_Seconds="5.5", Internal_Leakage_Rate_mL_Min="26", Pressure_Variation_PSI="80"))
+    out = model.score(checked.frame, checked.scorable).iloc[0]
+    plan = model.next_steps("repair", out["risk"], out["op_level"], out["leak_level"], [], [{"name": "Operation time", "share": 55}])
+    assert plan["title"] == "Schedule repair" and plan["when"] == "This week"
+    assert plan["steps"][0] == {"do": "Book a hangar slot this week.", "why": f"Aircraft at this risk have typically failed in {model.time_left(out['risk'])}."}
+    finding = next(s for s in plan["steps"] if "job card" in s["do"])
+    assert "very slow operation and very high leakage" in finding["do"] and finding["why"] == "Share of the added risk: operation time 55%."
+    assert "repeat the diagnostic test" in plan["steps"][-1]["do"] and "maintenance manual" in plan["scope"]
+
+
+def test_next_steps_fit_each_kind_of_result(model):
+    retest = model.next_steps("retest", None, None, None, ["actuation time", "leakage"])
+    assert retest["when"] == "At the next opportunity" and "no prediction was made" in retest["steps"][0]["why"]
+    assert "actuation time and leakage readings are recorded" in retest["steps"][1]["do"] and "unknown, not as safe" in retest["steps"][-1]["do"]
+    inspect = model.next_steps("inspect", 20.0, 1, 2)
+    assert inspect["when"].startswith("Within") and "at the next planned stop" in inspect["when"] and "32% risk or more" in inspect["steps"][-1]["do"]
+    reduced = model.next_steps("repair", 60.0, 2, None, ["leakage"])                     # one key reading missing
+    assert any(s["do"] == "Have the leakage reading taken at the same visit." and "reduced confidence" in s["why"] for s in reduced["steps"])
+    assert all(s["do"] for s in reduced["steps"])
+    monitor = model.next_steps("anything unknown", 1.0, 0, 0)                            # falls back to the safest plan
+    assert monitor["action"] == "monitor" and monitor["when"] == "No deadline" and monitor["steps"][0]["do"].startswith("No action")

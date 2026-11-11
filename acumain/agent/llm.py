@@ -241,6 +241,8 @@ class OfflinePlanner:
             if not chosen:
                 levels = result["by_level"]
                 if levels["High"] + levels["Medium"] + levels["Not scored"] == 0:
+                    if result["scored"] == 1:
+                        return self._say("**This aircraft needs no action now.** The failure model puts it at Low risk. Keep monitoring it at the normal interval.")
                     return self._say(f"**No aircraft in this review needs action.** All {result['scored']:,} scored records are Low risk.")
                 return self._say("**Nothing new to propose.** Every aircraft in this review that needs action already has a decision from you.")
             return self._call("propose_actions", actions=[
@@ -259,10 +261,17 @@ class OfflinePlanner:
         top = [r for r in actionable if r["record_id"] in asked and r["record_id"] not in not_filed][:3]
         selected = result["scope"] != "all records in the batch"
         expected = round(result["expected_failures_in_30_days"])
-        lines = [f"**{levels['High']:,} of the {result['scored']:,} {'selected' if selected else 'scored'} aircraft "
-                 f"{'is' if levels['High'] == 1 else 'are'} predicted to fail within 30 days.** "
-                 f"About {expected:,} failure{' is' if expected == 1 else 's are'} expected in that time if nothing is done.", "",
-                 "**Proposed for your approval**"]
+        if result["scored"] == 0:        # nothing could be scored: say that, not "0 of the 0"
+            opening = "**No prediction could be made.** " + ("Both key readings are missing for this record." if result["not_scored"] == 1
+                                                             else f"Both key readings are missing for all {result['not_scored']:,} records.")
+        elif result["scored"] == 1 and not selected:
+            opening = ("**This aircraft is predicted to fail within 30 days.**" if levels["High"]
+                       else "**This aircraft is not predicted to fail within 30 days,** but its risk is rising.")
+        else:
+            opening = (f"**{levels['High']:,} of the {result['scored']:,} {'selected' if selected else 'scored'} aircraft "
+                       f"{'is' if levels['High'] == 1 else 'are'} predicted to fail within 30 days.** "
+                       f"About {expected:,} failure{' is' if expected == 1 else 's are'} expected in that time if nothing is done.")
+        lines = [opening, "", "**Proposed for your approval**"]
         for label in (ACTIONS["repair"], ACTIONS["inspect"], ACTIONS["retest"]):
             if filed["by_action"].get(label):
                 lines.append(f"- {label}: {filed['by_action'][label]} aircraft.")
@@ -270,9 +279,12 @@ class OfflinePlanner:
             lines.append("- Most urgent: " + "; ".join(f"{r['aircraft']} ({r['risk_percent']:.0f}%, {r['reason'].lower()})" for r in top) + ".")
         notes = []
         if check["with_missing_or_unusable_readings"]:
-            notes.append(f"- {check['with_missing_or_unusable_readings']} records have a missing or unusable reading. The model still predicted for them.")
+            n = check["with_missing_or_unusable_readings"] - result["not_scored"]
+            if n > 0:
+                notes.append(f"- {n} record{' has' if n == 1 else 's have'} a missing or unusable reading. The model still predicted for {'it' if n == 1 else 'them'}.")
         if result["not_scored"]:
-            notes.append(f"- {result['not_scored']} could not be scored because both key readings are missing. They need a repeat test.")
+            n = result["not_scored"]
+            notes.append(f"- {n} could not be scored because both key readings are missing. {'It needs' if n == 1 else 'They need'} a repeat test.")
         if result["high_risk_missing_a_key_reading"]:
             notes.append(f"- {result['high_risk_missing_a_key_reading']} High-risk predictions were made without one key reading.")
         if notes:

@@ -84,6 +84,7 @@ CONTENT = {
         "headline": ("Demo & ", "Impact"),
         "demo_label": "DEMO",
         "demo_note": "2 minutes. Click to play. Captions on screen, so no sound is needed.",
+        "demo_link": ("If it does not play, watch it here:  ", "youtu.be/CbSBeCJjVRM", "https://youtu.be/CbSBeCJjVRM"),
         "now_label": "IMMEDIATE IMPACT",
         "now": "184 surprise groundings become 17.",
         "before": ("TODAY", "184 surprises"),
@@ -99,6 +100,7 @@ CONTENT = {
         "command": "docker compose up --build",
         "address": "http://localhost:8787",
         "notes": "Works with no API key   ·   Public replay: acumain.vercel.app",
+        "video": ("Demo video:  ", "youtu.be/CbSBeCJjVRM", "https://youtu.be/CbSBeCJjVRM"),
         "limits": "Limits: synthetic data, one record per aircraft. Stock, supply and work orders are simulated. A person approves every action.",
         "stats": [("185 of 187", "failures flagged ahead"), ("5 weeks", "of warning"), ("91%", "planned repairs")],
     },
@@ -233,6 +235,21 @@ def start(prs, number, kicker, headline):
     box(slide, LEFT, 7.02, 8, 0.3, [(FOOTER, 9.5, INK3, FONT)])
     box(slide, RIGHT - 1, 7.02, 1, 0.3, [(f"{number} / 6", 9.5, INK3, FONT, {"align": PP_ALIGN.RIGHT})])
     return slide
+
+
+def link(slide, x, y, w, lead, shown, address, size=13, colour=INK2, accent=BLUE, whole=False):
+    """A line that ends in a clickable web address. With `whole`, the box itself is the link, so the text keeps
+    its own colour (PowerPoint paints linked text in the theme's dark blue, which cannot be read on the dark slide)."""
+    shape = box(slide, x, y, w, 0.34, [(lead, size, colour, FONT)], MSO_ANCHOR.MIDDLE)
+    run = shape.text_frame.paragraphs[0].add_run()
+    run.text = shown
+    run.font.size, run.font.name, run.font.underline = Pt(size), HEAD, True
+    if whole:
+        shape.click_action.hyperlink.address = address
+    else:
+        run.hyperlink.address = address
+    run.font.color.rgb = accent
+    return shape
 
 
 def label(slide, x, y, w, text, colour=INK3):
@@ -412,6 +429,7 @@ def build(out: Path = OUT) -> Path:
     else:
         picture(s, "team-29.png", LEFT, 2.28, vw, vh)
     box(s, LEFT, 2.28 + vh + 0.1, vw, 0.3, [(c["demo_note"], 11.5, INK3, FONT)])
+    link(s, LEFT, 2.28 + vh + 0.42, vw, *c["demo_link"], size=14)
     bx = 7.95
     bw = RIGHT - bx
     label(s, bx, 1.95, bw, c["now_label"])
@@ -439,6 +457,7 @@ def build(out: Path = OUT) -> Path:
     box(s, LEFT, 3.98, 4, 0.28, [(c["run_label"], 10.5, CYAN, HEAD)])
     box(s, LEFT, 4.3, 7.8, 0.5, [([(c["command"], WHITE, MONO), ("    " + c["address"], CYAN, MONO)], 19, WHITE, MONO)], MSO_ANCHOR.MIDDLE)
     box(s, LEFT, 4.92, 7.8, 0.34, [(c["notes"], 12.5, MIST, FONT)])
+    link(s, LEFT, 5.32, 4.2, *c["video"], size=12.5, colour=MIST, accent=CYAN, whole=True)
     box(s, LEFT, 5.95, 7.8, 0.6, [(c["limits"], 11, GREY, FONT, {"spacing": 1.12})])
     sx = 9.35
     for i, (number, text) in enumerate(c["stats"]):

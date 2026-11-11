@@ -19,6 +19,6 @@ wanted = ["Introduction & Problem", "Solution & Features", "Technical Stack & Im
           "PROJECT NAME", "TEAM MEMBERS", "CASE CHOSEN", "THE CHALLENGE YOU TACKLE", "WHY IT MATTERS", "YOUR SOLUTION", "KEY FEATURES & FUNCTIONALITY",
           "CORE TECHNOLOGIES & RATIONALE", "IMPLEMENTATION CHALLENGES", "DEMO", "IMMEDIATE IMPACT", "POTENTIAL FUTURE IMPACT",
           "0.709", "185 of 187", "110 tests", "184", "167 planned", "17 surprises", "91%", "0.77", "5 weeks", "MISSING INPUT", "TOOL FAILURE",
-          "docker compose up --build", "acumain.vercel.app", "Team Maze", "Al Ain University"]
+          "docker compose up --build", "acumain.vercel.app", "youtu.be/CbSBeCJjVRM", "Team Maze", "Al Ain University"]
 missing = [w for w in wanted if w not in text]
 print(f"{len(wanted) - len(missing)} of {len(wanted)} expected phrases found" + (f"; MISSING: {missing}" if missing else ""))

@@ -80,11 +80,13 @@ CONTENT = {
         "also": "Also handled:  one blank reading (still predicted, reduced confidence)   ·   no API key",
     },
     5: {
-        "kicker": "SOLUTION SUBMISSION · 4 / 4",
-        "headline": ("Demo & ", "Impact"),
-        "demo_label": "DEMO",
-        "demo_note": "2 minutes. Click to play. Captions on screen, so no sound is needed.",
-        "demo_link": ("If it does not play, watch it here:  ", "youtu.be/CbSBeCJjVRM", "https://youtu.be/CbSBeCJjVRM"),
+        "kicker": "SOLUTION SUBMISSION · 4 / 4 · DEMO & IMPACT",
+        "note": "Click to play. 2 minutes. Captions on screen, so no sound is needed.",
+        "link": ("If it does not play:  ", "youtu.be/CbSBeCJjVRM", "https://youtu.be/CbSBeCJjVRM"),
+    },
+    6: {
+        "kicker": "SOLUTION SUBMISSION · 4 / 4 · DEMO & IMPACT",
+        "headline": ("The ", "Impact"),
         "now_label": "IMMEDIATE IMPACT",
         "now": "184 surprise groundings become 17.",
         "before": ("TODAY", "184 surprises"),
@@ -92,17 +94,15 @@ CONTENT = {
         "now_note": "91% planned with the same 2 hangar slots a week. A replay of the training fleet, not a trial.",
         "future_label": "POTENTIAL FUTURE IMPACT",
         "future": ["Actuator history: F1 0.71 to 0.77", "Real stock and maintenance systems", "GAL's costs: the value in money"],
-    },
-    6: {
-        "kicker": "HACKATHON · 10 TO 12 NOV 2026 · DUBAI",
+        "stats": [("185 of 187", "failures flagged ahead"), ("5 weeks", "of warning"), ("91%", "planned repairs")],
         "title": ("Thank ", "You"),
         "run_label": "RUN IT",
         "command": "docker compose up --build",
         "address": "http://localhost:8787",
-        "notes": "Works with no API key   ·   Public replay: acumain.vercel.app",
+        "notes": "Works with no API key",
+        "site": ("Try it online:  ", "acumain.vercel.app", "https://acumain.vercel.app"),
         "video": ("Demo video:  ", "youtu.be/CbSBeCJjVRM", "https://youtu.be/CbSBeCJjVRM"),
         "limits": "Limits: synthetic data, one record per aircraft. Stock, supply and work orders are simulated. A person approves every action.",
-        "stats": [("185 of 187", "failures flagged ahead"), ("5 weeks", "of warning"), ("91%", "planned repairs")],
     },
 }
 
@@ -413,60 +413,57 @@ def build(out: Path = OUT) -> Path:
         y += high + 0.5
     box(s, bx, y, bw, 0.3, [(c["also"], 11.5, INK3, FONT)])
 
-    # ---- 5. demo and impact: the video, and every failure as a square
+    # ---- 5. the demo video alone, as large as the slide allows, on a dark page
     c = CONTENT[5]
-    s = start(prs, 5, c["kicker"], c["headline"])
-    label(s, LEFT, 1.95, 6, c["demo_label"])
-    vw = 6.75
-    vh = vw * 9 / 16
+    s = page(prs, dark=True)
+    vh = 6.86
+    vw = vh * 16 / 9
+    vx, vy = (W - vw) / 2, 0.1
     if VIDEO.is_file():
-        movie = s.shapes.add_movie(str(VIDEO), Inches(LEFT), Inches(2.28), Inches(vw), Inches(vh), poster_frame_image=str(SCREENS / "team-29.png"), mime_type="video/mp4")
-        try:                                                        # a thin border, so the white poster does not melt into the page
-            movie.line.color.rgb = LINE2
-            movie.line.width = Pt(0.75)
-        except Exception:
-            pass
+        s.shapes.add_movie(str(VIDEO), Inches(vx), Inches(vy), Inches(vw), Inches(vh), poster_frame_image=str(SCREENS / "team-29.png"), mime_type="video/mp4")
     else:
-        picture(s, "team-29.png", LEFT, 2.28, vw, vh)
-    box(s, LEFT, 2.28 + vh + 0.1, vw, 0.3, [(c["demo_note"], 11.5, INK3, FONT)])
-    link(s, LEFT, 2.28 + vh + 0.42, vw, *c["demo_link"], size=14)
+        picture(s, "team-29.png", vx, vy, vw, vh, border=False)
+    box(s, vx, 7.04, 7.9, 0.34, [([(c["kicker"] + "     ", CYAN, HEAD), (c["note"], MIST, FONT)], 10.5, MIST, FONT)], MSO_ANCHOR.MIDDLE)
+    fallback = link(s, W - vx - 0.75 - 3.6, 7.04, 3.6, *c["link"], size=10.5, colour=MIST, accent=CYAN, whole=True)
+    fallback.text_frame.paragraphs[0].alignment = PP_ALIGN.RIGHT
+    box(s, W - vx - 0.6, 7.04, 0.6, 0.34, [("5 / 6", 9.5, GREY, FONT, {"align": PP_ALIGN.RIGHT})], MSO_ANCHOR.MIDDLE)
+
+    # ---- 6. the impact (every failure as a square), then thank you with how to run it and the limits
+    c = CONTENT[6]
+    s = start(prs, 6, c["kicker"], c["headline"])
+    label(s, LEFT, 1.9, 6.6, c["now_label"])
+    box(s, LEFT, 2.16, 6.8, 0.55, [(c["now"], 24, INK, HEAD)])
+    pitch = 0.13
+    ww = 23 * pitch
+    x2 = LEFT + ww + 0.4
+    box(s, LEFT, 2.86, ww, 0.62, [(c["before"][0], 9.5, INK3, HEAD), (c["before"][1], 17, RED, HEAD)])
+    box(s, x2, 2.86, ww + 0.2, 0.62, [(c["after"][0], 9.5, BLUE, HEAD), ([(c["after"][1], BLUE, HEAD), ("   " + c["after"][2], RED, HEAD)], 17, BLUE, HEAD)])
+    waffle(s, LEFT, 3.56, 0, pitch=pitch, side=0.105)
+    waffle(s, x2, 3.56, 167, pitch=pitch, side=0.105)
+    box(s, LEFT, 4.7, 6.6, 0.3, [(c["now_note"], 10.5, INK3, FONT)])
     bx = 7.95
     bw = RIGHT - bx
-    label(s, bx, 1.95, bw, c["now_label"])
-    box(s, bx, 2.24, bw, 0.5, [(c["now"], 19, INK, HEAD)])
-    ww = 23 * 0.1
-    x2 = RIGHT - ww
-    box(s, bx, 2.92, ww, 0.5, [(c["before"][0], 9, INK3, HEAD), (c["before"][1], 14, RED, HEAD)])
-    box(s, x2, 2.92, ww, 0.5, [(c["after"][0], 9, BLUE, HEAD), ([(c["after"][1], BLUE, HEAD), ("  " + c["after"][2], RED, HEAD)], 12.5, BLUE, HEAD)])
-    waffle(s, bx, 3.48, 0)
-    waffle(s, x2, 3.48, 167)
-    box(s, bx, 4.38, bw, 0.45, [(c["now_note"], 10, INK3, FONT)])
-    rule(s, bx, 4.98, RIGHT, 4.98, LINE2, 0.75)
-    label(s, bx, 5.12, bw, c["future_label"], BLUE)
+    label(s, bx, 1.9, bw, c["future_label"], BLUE)
     for i, text in enumerate(c["future"]):
-        box(s, bx, 5.44 + i * 0.42, 0.35, 0.4, [(str(i + 1), 16, BLUE, HEAD)], MSO_ANCHOR.MIDDLE)
-        box(s, bx + 0.4, 5.44 + i * 0.42, bw - 0.4, 0.4, [(text, 13, INK, FONT)], MSO_ANCHOR.MIDDLE)
-
-    # ---- 6. thank you, with how to run it, the limits and the three numbers
-    c = CONTENT[6]
-    s = page(prs, dark=True)
-    box(s, LEFT, 0.9, 8, 0.3, [(c["kicker"], 11, CYAN, HEAD)])
-    box(s, LEFT, 1.3, 8, 1.4, [([(c["title"][0], WHITE, HEAD), (c["title"][1], CYAN, HEAD)], 72, WHITE, HEAD)])
-    box(s, LEFT, 2.85, 8, 0.4, [(f"{TEAM['team']}  ·  {TEAM['university']}", 16, MIST, FONT)])
-    rule(s, LEFT, 3.75, 8.3, 3.75, RGBColor(0x2A, 0x3F, 0x4A), 0.75)
-    box(s, LEFT, 3.98, 4, 0.28, [(c["run_label"], 10.5, CYAN, HEAD)])
-    box(s, LEFT, 4.3, 7.8, 0.5, [([(c["command"], WHITE, MONO), ("    " + c["address"], CYAN, MONO)], 19, WHITE, MONO)], MSO_ANCHOR.MIDDLE)
-    box(s, LEFT, 4.92, 7.8, 0.34, [(c["notes"], 12.5, MIST, FONT)])
-    link(s, LEFT, 5.32, 4.2, *c["video"], size=12.5, colour=MIST, accent=CYAN, whole=True)
-    box(s, LEFT, 5.95, 7.8, 0.6, [(c["limits"], 11, GREY, FONT, {"spacing": 1.12})])
-    sx = 9.35
-    for i, (number, text) in enumerate(c["stats"]):
-        y = 1.3 + i * 1.5
-        rule(s, sx, y, RIGHT, y, RGBColor(0x2A, 0x3F, 0x4A), 0.75)
-        box(s, sx, y + 0.14, RIGHT - sx, 0.7, [(number, 38, CYAN if i == 2 else WHITE, HEAD)])
-        box(s, sx, y + 0.9, RIGHT - sx, 0.3, [(text, 12, MIST, FONT)])
-    box(s, LEFT, 7.02, 8, 0.3, [(FOOTER, 9.5, GREY, FONT)])
-    box(s, RIGHT - 1, 7.02, 1, 0.3, [("6 / 6", 9.5, GREY, FONT, {"align": PP_ALIGN.RIGHT})])
+        box(s, bx, 2.2 + i * 0.46, 0.35, 0.42, [(str(i + 1), 17, BLUE, HEAD)], MSO_ANCHOR.MIDDLE)
+        box(s, bx + 0.42, 2.2 + i * 0.46, bw - 0.42, 0.42, [(text, 14, INK, FONT)], MSO_ANCHOR.MIDDLE)
+    rule(s, bx, 3.72, RIGHT, 3.72, LINE2, 0.75)
+    x = bx
+    for i, ((number, text), sw) in enumerate(zip(c["stats"], (1.95, 1.5, 1.2))):
+        box(s, x, 3.84, sw, 0.5, [(number, 22, BLUE if i == 2 else INK, HEAD)])
+        box(s, x, 4.3, sw - 0.1, 0.5, [(text, 10, INK2, FONT)])
+        x += sw
+    by, bh = 5.14, 1.42
+    block(s, LEFT, by, RIGHT - LEFT, bh, DARK, rounded=0.08)
+    box(s, LEFT + 0.4, by + 0.18, 3.6, 0.7, [([(c["title"][0], WHITE, HEAD), (c["title"][1], CYAN, HEAD)], 36, WHITE, HEAD)], MSO_ANCHOR.MIDDLE)
+    box(s, LEFT + 0.42, by + 0.92, 3.6, 0.3, [(f"{TEAM['team']}  ·  {TEAM['university']}", 11.5, MIST, FONT)])
+    rx = LEFT + 4.35
+    box(s, rx, by + 0.18, 0.8, 0.24, [(c["run_label"], 9.5, CYAN, HEAD)], MSO_ANCHOR.MIDDLE)
+    box(s, rx + 0.8, by + 0.18, 3, 0.24, [(c["notes"], 10, MIST, FONT)], MSO_ANCHOR.MIDDLE)
+    box(s, rx, by + 0.42, 7.3, 0.4, [([(c["command"], WHITE, MONO), ("    " + c["address"], CYAN, MONO)], 16, WHITE, MONO)], MSO_ANCHOR.MIDDLE)
+    link(s, rx, by + 0.9, 3.4, *c["site"], size=12.5, colour=MIST, accent=CYAN, whole=True)
+    link(s, rx + 3.75, by + 0.9, 3.5, *c["video"], size=12.5, colour=MIST, accent=CYAN, whole=True)
+    box(s, LEFT, by + bh + 0.08, RIGHT - LEFT, 0.28, [(c["limits"], 9.5, INK3, FONT)])
 
     prs.save(str(out))
     return out

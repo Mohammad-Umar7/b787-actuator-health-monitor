@@ -15,9 +15,9 @@ print("slides:", len(deck.slides))
 print("embedded videos:", movies)
 print("long dashes:", text.count(chr(8212)) + text.count(chr(8211)))
 print("'simulated' appears:", text.lower().count("simulated"), "times")
-wanted = ["Introduction & Problem", "Solution & Features", "Technical Stack & Implementation", "Demo & Impact", "Thank You",
+wanted = ["Introduction & Problem", "Solution & Features", "Technical Stack & Implementation", "Thank You",
           "PROJECT NAME", "TEAM MEMBERS", "CASE CHOSEN", "THE CHALLENGE YOU TACKLE", "WHY IT MATTERS", "YOUR SOLUTION", "KEY FEATURES & FUNCTIONALITY",
-          "CORE TECHNOLOGIES & RATIONALE", "IMPLEMENTATION CHALLENGES", "DEMO", "IMMEDIATE IMPACT", "POTENTIAL FUTURE IMPACT",
+          "CORE TECHNOLOGIES & RATIONALE", "IMPLEMENTATION CHALLENGES", "DEMO & IMPACT", "IMMEDIATE IMPACT", "POTENTIAL FUTURE IMPACT",
           "0.709", "185 of 187", "110 tests", "184", "167 planned", "17 surprises", "91%", "0.77", "5 weeks", "MISSING INPUT", "TOOL FAILURE",
           "docker compose up --build", "acumain.vercel.app", "youtu.be/CbSBeCJjVRM", "Team Maze", "Al Ain University"]
 missing = [w for w in wanted if w not in text]

@@ -36,3 +36,7 @@ public_replay/site/
 # Renders of the Day 2 deck (made by deliverables/day2/render.ps1) and a superseded cut of the demo video
 deliverables/day2/rendered/
 deliverables/day2/demo-recorded.*
+
+# Lock files that an open deck leaves behind, and a temporary copy of the deck
+~$*
+deliverables/day2/*(new design).pptx

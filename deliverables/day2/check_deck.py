@@ -11,5 +11,6 @@ text = " ".join(shape.text_frame.text for slide in deck.slides for shape in slid
 print("slides:", len(deck.slides))
 print("long dashes:", text.count(chr(8212)) + text.count(chr(8211)))
 print("'simulated' appears:", text.lower().count("simulated"), "times")
-for number in ["0.709", "0.740", "185 of 187", "110", "184 failures", "0 to 7", "167 of 184", "91%", "65% to 79%", "14-day", "0.77", "5 weeks", "docker compose up --build", "acumain.vercel.app"]:
+for number in ["0.709", "185 of 187", "110", "184 surprise", "167 planned", "17 surprises", "91%", "65 to 79%", "14 days", "0.77", "5 weeks", "40 s", "DEMONSTRATED", "PROJECTED",
+               "MISSING INPUT", "TOOL FAILURE", "docker compose up --build", "acumain.vercel.app"]:
     print(f"  {'ok ' if number in text else 'MISSING'} {number}")
